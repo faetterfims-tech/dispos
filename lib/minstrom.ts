@@ -87,6 +87,7 @@ interface CostRow {
   start: string;
   energyKWh: number | null;
   totalPricePerKWh: number | null;
+  fixedFeesForInterval?: number | null;
   totalCost: number | null;
 }
 
@@ -94,6 +95,7 @@ interface RevenueRow {
   start: string;
   energyKWh: number | null;
   totalPricePerKWh: number | null;
+  fixedFeesForInterval?: number | null;
   netRevenue: number | null;
 }
 
@@ -145,6 +147,9 @@ export async function getMeterHours(from: Date, to: Date) {
     return r;
   };
 
+  // Det samme som Min Strøm-appen viser: inkl. faste gebyrer og abonnementer.
+  const billed = { importCost: 0, importFixedFees: 0, exportRevenue: 0, exportFixedFees: 0 };
+
   for (const [a, b] of chunks(from, to)) {
     const range = { from: a.toISOString(), to: b.toISOString() };
     const [costs, revenue, prices] = await Promise.all([
@@ -161,11 +166,15 @@ export async function getMeterHours(from: Date, to: Date) {
       const r = row(c.start);
       r.importKWh = c.energyKWh;
       if (c.totalPricePerKWh != null) r.buyPrice = c.totalPricePerKWh;
+      billed.importCost += c.totalCost ?? 0;
+      billed.importFixedFees += c.fixedFeesForInterval ?? 0;
     }
     for (const e of revenue.data) {
       const r = row(e.start);
       r.exportKWh = e.energyKWh;
       if (e.totalPricePerKWh != null && (e.energyKWh ?? 0) > 0) r.sellPrice = e.totalPricePerKWh;
+      billed.exportRevenue += e.netRevenue ?? 0;
+      billed.exportFixedFees += e.fixedFeesForInterval ?? 0;
     }
   }
 
@@ -183,6 +192,7 @@ export async function getMeterHours(from: Date, to: Date) {
   return {
     address: { id: address.id, label: address.formattedAddress ?? address.label ?? null },
     hours,
+    billed,
     sellPriceMethod: filled.method,
     sellPriceFee: filled.fee,
   };
