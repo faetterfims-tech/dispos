@@ -29,7 +29,7 @@ function token(): string {
 
 const MESSAGES: Record<number, string> = {
   401: "SunMate afviser tokenet. Opret et nyt under Integrations → Manage API Tokens.",
-  403: "SunMate-tokenet mangler rettigheden assets:read eller live_dashboard:read.",
+  403: "SunMate afviser tokenets rettigheder til dette kald.",
   429: "For mange kald til SunMate. Prøv igen om lidt.",
   503: "SunMate er midlertidigt utilgængelig.",
 };
@@ -48,7 +48,8 @@ async function get<T>(path: string, params: Record<string, string> = {}): Promis
     } catch {
       /* ikke JSON */
     }
-    throw new SunMateError(res.status, MESSAGES[res.status] ?? `SunMate svarede ${res.status}${detail ? `: ${detail}` : ""}`);
+    const base = MESSAGES[res.status] ?? `SunMate svarede ${res.status}`;
+    throw new SunMateError(res.status, `${base} [${path} → ${res.status}${detail ? `: ${detail}` : ""}]`);
   }
   return res.json() as Promise<T>;
 }
