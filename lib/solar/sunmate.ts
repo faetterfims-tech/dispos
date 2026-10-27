@@ -25,8 +25,8 @@ export interface SystemDataSource {
 const COLUMN_ALIASES: Record<"time" | "pv" | "charge" | "discharge" | "battery", string[]> = {
   time: ["time", "timestamp", "start", "date", "datetime", "tid", "tidspunkt", "dato"],
   pv: ["pv", "production", "solar", "pvkwh", "produktion", "sol", "solproduktion"],
-  charge: ["charge", "charged", "batterycharge", "chargekwh", "opladning", "opladet"],
-  discharge: ["discharge", "discharged", "batterydischarge", "dischargekwh", "afladning", "afladet"],
+  charge: ["charge", "charged", "batterycharge", "chargekwh", "opladning", "opladet", "batteriopladning"],
+  discharge: ["discharge", "discharged", "batterydischarge", "dischargekwh", "afladning", "afladet", "batteriafladning"],
   battery: ["battery", "batteri", "batterykwh"],
 };
 
@@ -103,6 +103,13 @@ export function parseSystemCsv(text: string): CsvParseResult {
   const iDis = findColumn(headers, "discharge");
   const iBat = iChg === -1 && iDis === -1 ? findColumn(headers, "battery") : -1;
 
+  // Dagsfiler (én række pr. dato uden klokkeslæt) kan ikke bruges til timeberegningen.
+  const sample = lines.slice(1, 6).map((l) => (l.split(sep)[iTime] ?? "").trim().replace(/^"|"$/g, ""));
+  if (iTime !== -1 && sample.length > 0 && sample.every((v) => /^\d{4}-\d{2}-\d{2}$|^\d{1,2}[-./]\d{1,2}[-./]\d{4}$/.test(v))) {
+    throw new Error(
+      "Filen har kun ét tal pr. dag. Beregningen kræver tal pr. time — vælg time/interval, når du eksporterer fra SunMate.",
+    );
+  }
   if (iTime === -1) throw new Error(`Fandt ingen tidskolonne. Overskrifter: ${rawHeaders.join(", ")}`);
   if (iPv === -1) throw new Error(`Fandt ingen produktionskolonne. Overskrifter: ${rawHeaders.join(", ")}`);
 
