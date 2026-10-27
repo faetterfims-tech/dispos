@@ -1,0 +1,164 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { calculate, calculateHour, paybackYears } from "./engine";
+import { fillSellPrices } from "./sellprice";
+import { parseSystemCsv, parseTimestamp } from "./sunmate";
+import { localDay, copenhagenToUtc } from "./time";
+import { mergeHours } from "./merge";
+import type { HourData } from "./types";
+
+const close = (a: number, b: number, eps = 1e-9) =>
+  assert.ok(Math.abs(a - b) < eps, `${a} ≠ ${b}`);
+
+const base = (start: string, o: Partial<HourData>): HourData => ({
+  start,
+  importKWh: 0,
+  exportKWh: 0,
+  buyPrice: 2,
+  sellPrice: 0.5,
+  pvKWh: 0,
+  chargeKWh: 0,
+  dischargeKWh: 0,
+  ...o,
+});
+
+test("uden anlæg: alt købes, ingen besparelse", () => {
+  const r = calculate([base("2026-06-01T10:00:00.000Z", { importKWh: 3 })]);
+  close(r.total.actualCost, 6);
+  close(r.total.noSystemCost, 6);
+  close(r.total.solarOnlyCost, 6);
+  close(r.total.totalSaving, 0);
+});
+
+test("sol midt på dagen uden batteri: overskud sælges", () => {
+  // Hus bruger 1, sol 4, eksport 3.
+  const h = calculateHour(base("2026-06-01T10:00:00.000Z", { pvKWh: 4, exportKWh: 3 }));
+  assert.ok(h && h !== "inconsistent");
+  close(h.load, 1);
+  close(h.actual, -1.5); // 3 × 0,5 solgt
+  close(h.noSystem, 2); // 1 × 2 købt
+  close(h.solarOnly, -1.5); // samme som faktisk — batteriet gør intet her
+});
+
+test("batteri flytter sol fra middag til aften", () => {
+  const hours = [
+    // Middag: sol 4, hus 1, batteri lader 3, ingen eksport. Salgspris lav.
+    base("2026-06-01T10:00:00.000Z", { pvKWh: 4, chargeKWh: 3, buyPrice: 1, sellPrice: 0.1 }),
+    // Aften: hus 3, batteri afgiver 2,7 (10 % tab), køber 0,3. Dyr time.
+    base("2026-06-01T18:00:00.000Z", { dischargeKWh: 2.7, importKWh: 0.3, buyPrice: 3, sellPrice: 1.5 }),
+  ];
+  const r = calculate(hours).total;
+  close(r.loadKWh, 4);
+  close(r.actualCost, 0.9); // 0,3 × 3
+  close(r.noSystemCost, 1 * 1 + 3 * 3); // 10
+  // Uden batteri: middag overskud 3 sælges à 0,1 = −0,3; aften køb 3 à 3 = 9
+  close(r.solarOnlyCost, 8.7);
+  close(r.solarSaving, 1.3);
+  close(r.batterySaving, 7.8);
+  close(r.totalSaving, 9.1);
+  close(r.solarSaving + r.batterySaving, r.totalSaving);
+});
+
+test("billig netopladning tæller som batteribesparelse", () => {
+  const hours = [
+    base("2026-01-10T02:00:00.000Z", { importKWh: 10.5, chargeKWh: 10, buyPrice: 0.8 }), // hus 0,5
+    base("2026-01-10T17:00:00.000Z", { dischargeKWh: 9, buyPrice: 2.5 }), // hus 9
+  ];
+  const r = calculate(hours).total;
+  close(r.loadKWh, 9.5);
+  close(r.actualCost, 8.4);
+  close(r.noSystemCost, 0.4 + 22.5);
+  close(r.solarSaving, 0);
+  close(r.batterySaving, 22.9 - 8.4);
+});
+
+test("manglende data er ikke nul", () => {
+  const r = calculate([
+    base("2026-06-01T10:00:00.000Z", { importKWh: 1 }),
+    base("2026-06-01T11:00:00.000Z", { importKWh: null }),
+    base("2026-06-01T12:00:00.000Z", { importKWh: 1, pvKWh: null }),
+  ]);
+  assert.equal(r.total.hours, 1);
+  assert.equal(r.missingSystemHours, 1);
+});
+
+test("negativt husforbrug markeres som inkonsistent", () => {
+  const r = calculate([base("2026-06-01T10:00:00.000Z", { exportKWh: 5, pvKWh: 1 })]);
+  assert.equal(r.inconsistentHours.length, 1);
+  assert.equal(r.total.hours, 0);
+});
+
+test("dage og måneder følger dansk tid", () => {
+  // 23:30 UTC 31. maj = 01:30 dansk tid 1. juni
+  assert.equal(localDay("2026-05-31T23:00:00.000Z"), "2026-06-01");
+  assert.equal(localDay("2026-01-31T23:00:00.000Z"), "2026-02-01");
+  const r = calculate([base("2026-05-31T23:00:00.000Z", { importKWh: 1 })]);
+  assert.equal(r.months[0].key, "2026-06");
+});
+
+test("dansk tid → UTC inkl. sommertid", () => {
+  assert.equal(new Date(copenhagenToUtc(2026, 6, 1, 12)).toISOString(), "2026-06-01T10:00:00.000Z");
+  assert.equal(new Date(copenhagenToUtc(2026, 1, 1, 12)).toISOString(), "2026-01-01T11:00:00.000Z");
+  assert.equal(new Date(parseTimestamp("2026-06-01 00:00")!).toISOString(), "2026-05-31T22:00:00.000Z");
+  assert.equal(new Date(parseTimestamp("01.06.2026 10:15")!).toISOString(), "2026-06-01T08:15:00.000Z");
+  assert.equal(new Date(parseTimestamp("2026-06-01T10:00:00Z")!).toISOString(), "2026-06-01T10:00:00.000Z");
+});
+
+test("salgspris estimeres ud fra spot og kalibreret gebyr", () => {
+  const hours = Array.from({ length: 30 }, (_, i) => ({
+    start: new Date(Date.UTC(2026, 5, 1, i)).toISOString(),
+    importKWh: 0,
+    exportKWh: 1,
+    // spot ekskl. moms = 0,6; afgifter 0,4 → købspris (0,6·1,25... ) konstrueret:
+    buyPrice: (0.6 * 1.25 + 0.5),
+    variableCharges: 0.5,
+    sellPrice: i < 25 ? 0.55 : null, // gebyr 0,05
+  }));
+  const { hours: out, method, fee } = fillSellPrices(hours);
+  assert.equal(method, "spot");
+  close(fee!, 0.05);
+  close(out[29].sellPrice!, 0.55);
+  assert.equal(out[29].sellPriceEstimated, true);
+  assert.equal(out[0].sellPriceEstimated, undefined);
+});
+
+test("CSV fra anlæg: 15-min Wh summeres til timer", () => {
+  const csv = [
+    "Tidspunkt;Produktion (Wh);Opladning (Wh);Afladning (Wh)",
+    "2026-06-01 12:00;500;100;0",
+    "2026-06-01 12:15;500;100;0",
+    "2026-06-01 12:30;500;100;0",
+    "2026-06-01 12:45;500;100;0",
+    "2026-06-01 13:00;1.000;0;250",
+  ].join("\n");
+  const r = parseSystemCsv(csv);
+  assert.equal(r.unitFactor, 0.001);
+  assert.equal(r.hours.length, 2);
+  assert.equal(r.hours[0].start, "2026-06-01T10:00:00.000Z");
+  close(r.hours[0].pvKWh!, 2);
+  close(r.hours[0].chargeKWh!, 0.4);
+  close(r.hours[1].pvKWh!, 1);
+  close(r.hours[1].dischargeKWh!, 0.25);
+});
+
+test("CSV med signeret batterikolonne", () => {
+  const r = parseSystemCsv("time,pv,battery\n2026-06-01T10:00:00Z,2.5,-1\n2026-06-01T18:00:00Z,0,1.5");
+  assert.equal(r.hasBattery, true);
+  close(r.hours[0].chargeKWh!, 1);
+  close(r.hours[1].dischargeKWh!, 1.5);
+  close(r.hours[1].chargeKWh!, 0);
+});
+
+test("flet: time uden anlægsdata bliver ukendt, ikke nul", () => {
+  const merged = mergeHours(
+    [{ start: "a", importKWh: 1, exportKWh: 0, buyPrice: 1, sellPrice: 0.5 }],
+    [],
+  );
+  assert.equal(merged[0].pvKWh, null);
+  assert.equal(calculate(merged).total.hours, 0);
+});
+
+test("tilbagebetalingstid", () => {
+  close(paybackYears(100_000, 5_000, 182.5)!, 10);
+  assert.equal(paybackYears(100_000, -1, 30), null);
+});
