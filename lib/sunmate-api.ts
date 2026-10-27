@@ -69,11 +69,13 @@ interface AssetList {
  * flere kommaseparerede kandidater (fx serienummer og System ID); ellers slås
  * den første inverter op via /assets/list.
  */
+/** Daniels Deye-inverter: serienummer og SunMate System ID (fra "Mine Invertere"). Ikke hemmelige. */
+const KNOWN_ASSET_IDS = ["2409044532", "076d8534-e95d-4be1-a724-ba8445ea8d5f"];
+
 export async function getAssetIds(): Promise<string[]> {
-  const fixed = (process.env.SUNMATE_ASSET_ID ?? "")
-    .split(",")
+  const fixed = [...(process.env.SUNMATE_ASSET_ID ?? "").split(","), ...KNOWN_ASSET_IDS]
     .map((s) => s.trim())
-    .filter(Boolean);
+    .filter((s, i, all) => s && all.indexOf(s) === i);
   if (fixed.length > 0) return fixed;
   const res = await get<AssetList>("/assets/list");
   const inverter = res.data.assets.find((a) => a.asset_info.asset_type === "inverter") ?? res.data.assets[0];
