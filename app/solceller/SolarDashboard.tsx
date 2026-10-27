@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { calculate, paybackYears } from "@/lib/solar/engine";
 import { mergeHours, type MeterHour } from "@/lib/solar/merge";
-import { parseSystemCsv, type CsvParseResult } from "@/lib/solar/sunmate";
+import { parseSystemCsv, type CsvParseResult, type SystemHour } from "@/lib/solar/sunmate";
 import { copenhagenToUtc, localDay } from "@/lib/solar/time";
 import SavingsChart from "./SavingsChart";
 import { fmtKr, fmtKWh, fmtMonth, fmtPct, fmtPrice, fmtYears } from "./format";
@@ -59,6 +59,7 @@ export default function SolarDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [csvError, setCsvError] = useState<string | null>(null);
   const [view, setView] = useState<"months" | "days">("months");
+  const [stored, setStored] = useState<{ configured: boolean; hours: SystemHour[] } | null>(null);
 
   useEffect(() => {
     const s = load<Settings>(STORAGE.settings);
@@ -82,10 +83,17 @@ export default function SolarDashboard() {
       const [ty, tm, td] = settings.to.split("-").map(Number);
       const from = new Date(copenhagenToUtc(fy, fm, fd)).toISOString();
       const to = new Date(copenhagenToUtc(ty, tm, td + 1)).toISOString();
-      const res = await fetch(`/api/solceller?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+      const range = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+      const [res, sysRes] = await Promise.all([fetch(`/api/solceller?${range}`), fetch(`/api/sunmate/hours?${range}`)]);
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? `Fejl ${res.status}`);
       setMeter(body as MeterResponse);
+      try {
+        const sys = await sysRes.json();
+        setStored(sysRes.ok ? { configured: Boolean(sys.configured), hours: sys.hours ?? [] } : null);
+      } catch {
+        setStored(null);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -115,10 +123,22 @@ export default function SolarDashboard() {
     }
   }
 
+  // Anlægsdata: CSV (typisk historik) + automatisk indsamlede timer fra SunMate-API'et.
+  // Overlapper de, vinder de indsamlede timer.
+  const systemHours = useMemo(() => {
+    const csv = system?.hours ?? [];
+    const api = stored?.hours ?? [];
+    if (csv.length === 0 && api.length === 0) return null;
+    const map = new Map<string, SystemHour>();
+    for (const h of csv) map.set(h.start, h);
+    for (const h of api) map.set(h.start, h);
+    return [...map.values()];
+  }, [system, stored]);
+
   const result = useMemo(() => {
     if (!meter) return null;
-    return calculate(mergeHours(meter.hours, system?.hours ?? null));
-  }, [meter, system]);
+    return calculate(mergeHours(meter.hours, systemHours));
+  }, [meter, systemHours]);
 
   const coveredDays = result ? new Set(result.days.map((d) => d.key)).size : 0;
   const investment = (Number(settings.solarInvestment) || 0) + (Number(settings.batteryInvestment) || 0);
@@ -146,6 +166,15 @@ export default function SolarDashboard() {
 
       <section className="card stack">
         <h2>Anlægsdata (SunMate)</h2>
+        {stored && (
+          <p className="small">
+            {stored.configured
+              ? stored.hours.length > 0
+                ? `Automatisk indsamlet: ${stored.hours.length.toLocaleString("da-DK")} timer (${localDay(stored.hours[0].start)} – ${localDay(stored.hours[stored.hours.length - 1].start)}).`
+                : "Automatisk indsamling er sat op, men har ingen timer i perioden endnu."
+              : "Automatisk indsamling fra SunMate er ikke sat op endnu."}
+          </p>
+        )}
         {system ? (
           <>
             <p className="muted">
@@ -319,7 +348,7 @@ export default function SolarDashboard() {
             estimatedSellHours={t.estimatedSellHours}
             inconsistent={result.inconsistentHours.length}
             missingSystem={result.missingSystemHours}
-            hasSystem={Boolean(system)}
+            hasSystem={Boolean(systemHours)}
           />
 
           <details className="card">

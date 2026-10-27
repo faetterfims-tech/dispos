@@ -162,3 +162,62 @@ test("tilbagebetalingstid", () => {
   close(paybackYears(100_000, 5_000, 182.5)!, 10);
   assert.equal(paybackYears(100_000, -1, 30), null);
 });
+
+import { timelineToHours } from "./timeline";
+
+test("tidslinje: watt → kWh pr. hel time, kun afsluttede timer", () => {
+  // Hvert 5. minut fra 10:00 til 12:10: sol 6000 W, batteri lader 2000 W.
+  const pts = [];
+  for (let m = 0; m <= 130; m += 5) {
+    pts.push({ datetime: new Date(Date.UTC(2026, 5, 1, 10, m)).toISOString(), solar_w: 6000, battery_w: 2000 });
+  }
+  const h = timelineToHours(pts);
+  assert.equal(h.length, 2); // 10-11 og 11-12; 12-13 er ikke slut
+  close(h[0].pvKWh!, 6);
+  close(h[0].chargeKWh!, 2);
+  close(h[0].dischargeKWh!, 0);
+});
+
+test("tidslinje: afladning er negativ battery_w, og huller giver ingen time", () => {
+  const pts = [
+    { datetime: "2026-06-01T18:00:00Z", solar_w: 0, battery_w: -3000 },
+    { datetime: "2026-06-01T18:30:00Z", solar_w: 0, battery_w: -3000 }, // 30 min hul > 20 min
+    { datetime: "2026-06-01T18:45:00Z", solar_w: 0, battery_w: -3000 },
+    { datetime: "2026-06-01T19:00:00Z", solar_w: 0, battery_w: -3000 },
+  ];
+  assert.equal(timelineToHours(pts).length, 0);
+  const full = Array.from({ length: 13 }, (_, i) => ({
+    datetime: new Date(Date.UTC(2026, 5, 1, 18, i * 5)).toISOString(),
+    solar_w: 0,
+    battery_w: -3000,
+  }));
+  const h = timelineToHours(full);
+  close(h[0].dischargeKWh!, 3);
+  close(h[0].chargeKWh!, 0);
+});
+
+test("tidslinje: kalibreres mod SunMates dagstotaler", () => {
+  const pts = Array.from({ length: 13 }, (_, i) => ({
+    datetime: new Date(Date.UTC(2026, 5, 1, 10, i * 5)).toISOString(),
+    solar_w: 5000,
+    battery_w: 0,
+  }));
+  const h = timelineToHours(pts, { produced_today_kwh: 5.5 });
+  close(h[0].pvKWh!, 5.5);
+  // Urimelig total (3×) ignoreres
+  close(timelineToHours(pts, { produced_today_kwh: 15 })[0].pvKWh!, 5);
+});
+
+test("CSV med kun dagstal afvises med tydelig besked", () => {
+  assert.throws(
+    () => parseSystemCsv("Dato;Produktion (kWh);Batteriopladning (kWh);Batteriafladning (kWh)\n2026-01-01;4,5;42,1;41,3\n2026-01-02;5,4;31,8;31,5"),
+    /ét tal pr. dag/,
+  );
+});
+
+test("CSV med SunMates danske kolonnenavne pr. time", () => {
+  const r = parseSystemCsv("Tidspunkt;Produktion (kWh);Batteriopladning (kWh);Batteriafladning (kWh)\n2026-06-01 12:00;4,5;2,1;0,0");
+  assert.equal(r.hasBattery, true);
+  close(r.hours[0].chargeKWh!, 2.1);
+  close(r.hours[0].dischargeKWh!, 0);
+});
