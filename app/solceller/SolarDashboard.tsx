@@ -11,6 +11,8 @@ import { fmtKr, fmtKWh, fmtMonth, fmtPct, fmtPrice, fmtYears } from "./format";
 interface MeterResponse {
   address: { id: string; label: string | null };
   hours: MeterHour[];
+  /** Som på regningen/Min Strøm-appen: inkl. faste gebyrer. */
+  billed?: { importCost: number; importFixedFees: number; exportRevenue: number; exportFixedFees: number };
   sellPriceMethod: "spot" | "offset" | "none";
   sellPriceFee: number | null;
 }
@@ -234,7 +236,7 @@ export default function SolarDashboard() {
                 <Kpi label="Sparet i alt" value={fmtKr(t.totalSaving)} />
                 <Kpi label="Heraf sol" value={fmtKr(t.solarSaving)} color="var(--series-1)" />
                 <Kpi label="Heraf batteri" value={fmtKr(t.batterySaving)} color="var(--series-2)" />
-                <Kpi label="Betalt (netto)" value={fmtKr(t.actualCost)} />
+                <Kpi label="Betalt (netto, ekskl. abonnementer)" value={fmtKr(t.actualCost)} />
                 <Kpi label="Uden anlæg" value={fmtKr(t.noSystemCost)} />
                 <Kpi label="Husforbrug" value={fmtKWh(t.loadKWh)} />
               </div>
@@ -248,13 +250,25 @@ export default function SolarDashboard() {
             <section className="card stack">
               <h2>Fra måleren</h2>
               <div className="kpis">
-                <Kpi label="Betalt for køb" value={fmtKr(result.meterOnly.importCost)} />
-                <Kpi label="Fået for salg" value={fmtKr(result.meterOnly.exportRevenue)} />
-                <Kpi label="Netto" value={fmtKr(result.meterOnly.netCost)} />
+                <Kpi label="Betalt for køb" value={fmtKr(meter!.billed?.importCost ?? result.meterOnly.importCost)} />
+                <Kpi label="Fået for salg" value={fmtKr(meter!.billed?.exportRevenue ?? result.meterOnly.exportRevenue)} />
+                <Kpi
+                  label="Netto"
+                  value={fmtKr(
+                    (meter!.billed?.importCost ?? result.meterOnly.importCost) -
+                      (meter!.billed?.exportRevenue ?? result.meterOnly.exportRevenue),
+                  )}
+                />
                 <Kpi label="Din købspris" value={fmtPrice(result.meterOnly.avgPaidBuyPrice)} />
                 <Kpi label="Gns. timepris" value={fmtPrice(result.meterOnly.avgMarketBuyPrice)} />
                 <Kpi label="Din salgspris" value={fmtPrice(result.meterOnly.avgPaidSellPrice)} />
               </div>
+              {meter?.billed && (
+                <p className="small">
+                  Som i Min Strøm-appen, inkl. faste abonnementer og gebyrer ({fmtKr(meter.billed.importFixedFees + meter.billed.exportFixedFees)}).
+                  Købsprisen pr. kWh er uden dem.
+                </p>
+              )}
               <p className="notice">
                 Besparelsen fra sol og batteri kræver anlægsdata. Indlæs en CSV fra SunMate ovenfor.
               </p>
