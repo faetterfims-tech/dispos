@@ -1,16 +1,39 @@
-# React + Vite
+# dispos
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Daniels personlige app-portal. Next.js (App Router) på Vercel.
 
-Currently, two official plugins are available:
+Hvert værktøj ligger i sin egen mappe under `app/` og registreres i `lib/tools.ts`.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Værktøjer
 
-## React Compiler
+### Solceller (`/solceller`)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Regner time for time ud, hvad solceller og batteri faktisk sparer, ved at sammenligne tre scenarier:
 
-## Expanding the ESLint configuration
+| Scenarie | Sådan |
+|---|---|
+| **Faktisk** | Købt og solgt ifølge Min Strøm |
+| **Kun sol** | Underskud købes, overskud sælges samme time |
+| **Uden anlæg** | Hele husforbruget købes til timens pris |
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+Husforbrug pr. time = købt + sol + afladet − solgt − opladet.
+
+- **Min Strøm** (måler + priser) hentes på serveren: `lib/minstrom.ts`, `app/api/solceller/route.ts`.
+- **SunMate** (produktion, op/afladning): API endnu ikke koblet på. Indtil da indlæses en CSV i browseren (`lib/solar/sunmate.ts`).
+- Beregningen er ren TypeScript uden afhængigheder: `lib/solar/engine.ts` med tests i `engine.test.ts`.
+
+## Miljøvariabler (Vercel → Settings → Environment Variables)
+
+| Navn | |
+|---|---|
+| `DISPOS_PASSWORD` | Påkrævet. Adgangskode til hele siden. |
+| `MINSTROEM_API_KEY` | Nøgle fra Min Strøm-appen (kræver Min Strøm Plus). |
+| `MINSTROEM_ADDRESS_ID` | Valgfri, hvis kontoen har flere adresser. |
+
+## Udvikling
+
+```bash
+npm install
+npm run dev
+npm test
+```
