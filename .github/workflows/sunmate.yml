@@ -2,11 +2,11 @@
 # SunMates API har ingen historik, så den skal samles løbende.
 name: SunMate-indsamling
 
+# Tidsplanen er slået fra: SunMates Cloudflare blokerer kald fra servere.
+# Indsamlingen kører i stedet fra Home Assistant (docs/home-assistant.md).
+# Kan stadig startes manuelt, og tidsplanen kan slås til igen, hvis SunMate
+# undtager API'et fra bot-tjekket.
 on:
-  schedule:
-    # Hvert 20. minut. GitHub kan forsinke kørsler; flere kørsler pr. time
-    # sikrer, at hver time bliver hentet, før tidslinjen nulstilles ved midnat.
-    - cron: "*/20 * * * *"
   workflow_dispatch: {}
 
 jobs:
