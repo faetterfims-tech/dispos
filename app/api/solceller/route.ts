@@ -23,7 +23,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof MinStromError) {
-      return NextResponse.json({ error: err.message, code: err.code }, { status: err.status >= 500 ? 502 : err.status });
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.code === "missing_key" ? 500 : 502 });
     }
     console.error(err);
     return NextResponse.json({ error: "Uventet fejl ved hentning fra Min Strøm." }, { status: 500 });
