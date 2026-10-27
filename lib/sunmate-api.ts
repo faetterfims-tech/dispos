@@ -44,9 +44,15 @@ async function get<T>(path: string, params: Record<string, string> = {}): Promis
   if (!res.ok) {
     let detail = "";
     try {
-      detail = (await res.json())?.message ?? "";
+      const text = await res.text();
+      try {
+        const body = JSON.parse(text);
+        detail = body?.message ?? body?.error ?? JSON.stringify(body).slice(0, 200);
+      } catch {
+        detail = text.slice(0, 200);
+      }
     } catch {
-      /* ikke JSON */
+      /* ingen body */
     }
     const base = MESSAGES[res.status] ?? `SunMate svarede ${res.status}`;
     throw new SunMateError(res.status, `${base} [${path} → ${res.status}${detail ? `: ${detail}` : ""}]`);
@@ -58,13 +64,21 @@ interface AssetList {
   data: { assets: { asset_info: { asset_id: string; asset_name?: string; asset_type?: string } }[] };
 }
 
-export async function getAssetId(): Promise<string> {
-  const fixed = process.env.SUNMATE_ASSET_ID?.trim();
-  if (fixed) return fixed;
+/**
+ * Inverter-ID'er der skal prøves, i rækkefølge. SUNMATE_ASSET_ID må indeholde
+ * flere kommaseparerede kandidater (fx serienummer og System ID); ellers slås
+ * den første inverter op via /assets/list.
+ */
+export async function getAssetIds(): Promise<string[]> {
+  const fixed = (process.env.SUNMATE_ASSET_ID ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (fixed.length > 0) return fixed;
   const res = await get<AssetList>("/assets/list");
   const inverter = res.data.assets.find((a) => a.asset_info.asset_type === "inverter") ?? res.data.assets[0];
   if (!inverter) throw new SunMateError(404, "Fandt ingen inverter på SunMate-kontoen.");
-  return inverter.asset_info.asset_id;
+  return [inverter.asset_info.asset_id];
 }
 
 interface LiveDashboard {
@@ -84,8 +98,25 @@ export async function getTodayTimeline(): Promise<{
   timeline: TimelinePoint[];
   totals: DayTotals;
 }> {
-  const assetId = await getAssetId();
-  const res = await get<LiveDashboard>("/livedashboard", { asset_id: assetId });
+  const ids = await getAssetIds();
+  let res: LiveDashboard | null = null;
+  let assetId = ids[0];
+  const errors: string[] = [];
+  for (const id of ids) {
+    try {
+      res = await get<LiveDashboard>("/livedashboard", { asset_id: id });
+      assetId = id;
+      break;
+    } catch (err) {
+      // 403/404/422 kan betyde forkert ID — prøv næste kandidat.
+      if (err instanceof SunMateError && [403, 404, 422].includes(err.status) && ids.length > 1) {
+        errors.push(`${id}: ${err.message}`);
+        continue;
+      }
+      throw err;
+    }
+  }
+  if (!res) throw new SunMateError(403, `Ingen af inverter-ID'erne virkede. ${errors.join(" | ")}`);
   const info = res.data.asset_info ?? {};
   return {
     assetId,
