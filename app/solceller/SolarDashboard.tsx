@@ -46,12 +46,16 @@ function save(key: string, value: unknown) {
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+/** Anlæggets pris fra SunMate-portalen (Mine Invertere). Kan overskrives på siden. */
+const DEFAULT_SOLAR_INVESTMENT = "69997";
+const DEFAULT_BATTERY_INVESTMENT = "60001";
+
 export default function SolarDashboard() {
   const [settings, setSettings] = useState<Settings>({
     from: "2025-08-01",
     to: today(),
-    solarInvestment: "",
-    batteryInvestment: "",
+    solarInvestment: DEFAULT_SOLAR_INVESTMENT,
+    batteryInvestment: DEFAULT_BATTERY_INVESTMENT,
   });
   const [meter, setMeter] = useState<MeterResponse | null>(null);
   const [system, setSystem] = useState<(CsvParseResult & { fileName: string }) | null>(null);
@@ -63,7 +67,13 @@ export default function SolarDashboard() {
 
   useEffect(() => {
     const s = load<Settings>(STORAGE.settings);
-    if (s) setSettings({ ...s, to: today() });
+    if (s)
+      setSettings({
+        ...s,
+        to: today(),
+        solarInvestment: s.solarInvestment || DEFAULT_SOLAR_INVESTMENT,
+        batteryInvestment: s.batteryInvestment || DEFAULT_BATTERY_INVESTMENT,
+      });
     const sys = load<CsvParseResult & { fileName: string }>(STORAGE.system);
     if (sys) setSystem(sys);
   }, []);
