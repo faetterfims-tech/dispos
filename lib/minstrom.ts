@@ -23,10 +23,25 @@ export class MinStromError extends Error {
 }
 
 function apiKey(): string {
-  const key = process.env.MINSTROEM_API_KEY;
-  if (!key) throw new MinStromError(500, "missing_key", "MINSTROEM_API_KEY er ikke sat på serveren.");
+  // Tål indsat mellemrum, linjeskift, anførselstegn eller et "Bearer "-præfiks.
+  const key = (process.env.MINSTROEM_API_KEY ?? "")
+    .trim()
+    .replace(/^["']|["']$/g, "")
+    .replace(/^Bearer\s+/i, "")
+    .trim();
+  if (!key) throw new MinStromError(500, "missing_key", "MINSTROEM_API_KEY er ikke sat i Vercel.");
   return key;
 }
+
+const DANISH: Record<string, string> = {
+  invalid_token: "Min Strøm afviser API-nøglen. Opret en ny nøgle i Min Strøm-appen og læg den i MINSTROEM_API_KEY i Vercel.",
+  credential_expired: "API-nøglen er udløbet. Opret en ny i Min Strøm-appen og opdatér MINSTROEM_API_KEY i Vercel.",
+  plus_required: "API'et kræver et aktivt Min Strøm Plus-abonnement.",
+  forbidden: "Nøglen har ikke adgang til denne adresse.",
+  range_too_large: "Perioden er for lang til ét kald.",
+  rate_limited: "For mange kald til Min Strøm lige nu. Prøv igen om et minut.",
+  upstream_unavailable: "Min Strøm kan ikke hente data lige nu. Prøv igen senere.",
+};
 
 async function get<T>(path: string, params: Record<string, string> = {}): Promise<T> {
   const url = new URL(BASE + path);
@@ -37,16 +52,22 @@ async function get<T>(path: string, params: Record<string, string> = {}): Promis
     next: { revalidate: 3600 },
   });
   if (!res.ok) {
-    let code = "http_error";
-    let message = `Min Strøm svarede ${res.status}`;
+    let code = res.status === 401 ? "invalid_token" : "http_error";
+    let detail = "";
     try {
-      const body = await res.json();
-      code = body?.error?.code ?? body?.code ?? code;
-      message = body?.error?.message ?? body?.message ?? message;
+      const text = await res.text();
+      try {
+        const body = JSON.parse(text);
+        code = body?.error?.code ?? body?.code ?? code;
+        detail = body?.error?.message ?? body?.message ?? "";
+      } catch {
+        detail = text.slice(0, 200);
+      }
     } catch {
-      /* ikke JSON */
+      /* ingen body */
     }
-    throw new MinStromError(res.status, code, message);
+    const message = DANISH[code] ?? `Min Strøm svarede ${res.status}${detail ? `: ${detail}` : ""}`;
+    throw new MinStromError(res.status, code, `${message} (${code})`);
   }
   return res.json() as Promise<T>;
 }
