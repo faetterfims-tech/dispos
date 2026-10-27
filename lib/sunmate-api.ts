@@ -38,7 +38,13 @@ async function get<T>(path: string, params: Record<string, string> = {}): Promis
   const url = new URL(BASE + path);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
   const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token()}`, Accept: "application/json" },
+    headers: {
+      Authorization: `Bearer ${token()}`,
+      Accept: "application/json",
+      // Cloudflare foran SunMate udfordrer anonyme klienter; identificér os.
+      "User-Agent": "dispos/1.0 (+https://dispos.dk; personal SunMate API client)",
+      "Accept-Language": "da-DK,da;q=0.9,en;q=0.8",
+    },
     cache: "no-store",
   });
   if (!res.ok) {
@@ -53,6 +59,12 @@ async function get<T>(path: string, params: Record<string, string> = {}): Promis
       }
     } catch {
       /* ingen body */
+    }
+    if (/just a moment|cf-chl|challenge-platform/i.test(detail) || res.headers.get("cf-mitigated")) {
+      throw new SunMateError(
+        res.status,
+        `SunMates Cloudflare-beskyttelse blokerer kald fra dispos' server [${path}]. SunMate skal undtage /api/customer/v1 fra bot-tjekket.`,
+      );
     }
     const base = MESSAGES[res.status] ?? `SunMate svarede ${res.status}`;
     throw new SunMateError(res.status, `${base} [${path} → ${res.status}${detail ? `: ${detail}` : ""}]`);
