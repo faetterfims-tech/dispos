@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { calculate, paybackYears } from "@/lib/solar/engine";
-import { mergeHours, type MeterHour } from "@/lib/solar/merge";
+import { mergeHours, unpackHours, type MeterHour, type PackedHour } from "@/lib/solar/merge";
 import { parseSystemCsv, type CsvParseResult, type SystemHour } from "@/lib/solar/sunmate";
 import { copenhagenToUtc, localDay } from "@/lib/solar/time";
 import SavingsChart from "./SavingsChart";
@@ -86,20 +86,23 @@ export default function SolarDashboard() {
     save(STORAGE.settings, next);
   };
 
-  async function fetchMeter() {
+  async function fetchMeter(range?: { from: string; to: string }) {
+    const period = range ?? { from: settings.from, to: settings.to };
+    if (range) update(range);
     setLoading(true);
     setError(null);
     try {
       // Datoerne er danske kalenderdage. "Til" er inklusiv i formularen; API'et bruger eksklusiv slut.
-      const [fy, fm, fd] = settings.from.split("-").map(Number);
-      const [ty, tm, td] = settings.to.split("-").map(Number);
+      const [fy, fm, fd] = period.from.split("-").map(Number);
+      const [ty, tm, td] = period.to.split("-").map(Number);
       const from = new Date(copenhagenToUtc(fy, fm, fd)).toISOString();
       const to = new Date(copenhagenToUtc(ty, tm, td + 1)).toISOString();
       const range = `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
       const [res, sysRes] = await Promise.all([fetch(`/api/solceller?${range}`), fetch(`/api/sunmate/hours?${range}`)]);
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? `Fejl ${res.status}`);
-      setMeter(body as MeterResponse);
+      const { packed, ...rest } = body as Omit<MeterResponse, "hours"> & { packed: PackedHour[] };
+      setMeter({ ...rest, hours: unpackHours(packed) });
       try {
         const sys = await sysRes.json();
         setStored(sysRes.ok ? { configured: Boolean(sys.configured), hours: sys.hours ?? [] } : null);
@@ -168,10 +171,28 @@ export default function SolarDashboard() {
             Til
             <input type="date" value={settings.to} onChange={(e) => update({ to: e.target.value })} />
           </label>
-          <button onClick={fetchMeter} disabled={loading}>
+          <button onClick={() => fetchMeter()} disabled={loading}>
             {loading ? "Henter…" : meter ? "Hent igen" : "Hent fra Min Strøm"}
           </button>
         </div>
+        <div className="controls">
+          {[
+            { label: "Al historik", from: "2021-01-01" },
+            { label: "Siden solceller", from: "2025-08-01" },
+            { label: "I år", from: `${new Date().getFullYear()}-01-01` },
+            { label: "Seneste 30 dage", from: new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10) },
+          ].map((p) => (
+            <button
+              key={p.label}
+              className="secondary"
+              disabled={loading}
+              onClick={() => fetchMeter({ from: p.from, to: today() })}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+        {loading && <p className="small">Henter time for time fra Min Strøm. Flere års data kan tage op til et minut.</p>}
         {meter?.address.label && <p className="small">Adresse: {meter.address.label}</p>}
         {error && <p className="notice error">{error}</p>}
       </section>

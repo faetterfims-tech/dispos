@@ -221,3 +221,19 @@ test("CSV med SunMates danske kolonnenavne pr. time", () => {
   close(r.hours[0].chargeKWh!, 2.1);
   close(r.hours[0].dischargeKWh!, 0);
 });
+
+import { packHours, unpackHours } from "./merge";
+
+test("kompakt overførsel bevarer timer, null og estimat-markering", () => {
+  const h = [
+    { start: "2021-09-01T10:00:00.000Z", importKWh: 1.23456, exportKWh: null, buyPrice: 2.5, sellPrice: 0.4, sellPriceEstimated: true },
+    { start: "2026-10-27T22:00:00.000Z", importKWh: 0, exportKWh: 3, buyPrice: null, sellPrice: 1.1 },
+  ];
+  const back = unpackHours(JSON.parse(JSON.stringify(packHours(h))));
+  assert.equal(back[0].start, h[0].start);
+  assert.equal(back[0].importKWh, 1.2346);
+  assert.equal(back[0].exportKWh, null);
+  assert.equal(back[0].sellPriceEstimated, true);
+  assert.equal(back[1].buyPrice, null);
+  assert.equal(back[1].sellPriceEstimated, undefined);
+});
