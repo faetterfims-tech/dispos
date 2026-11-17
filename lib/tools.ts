@@ -15,4 +15,10 @@ export const tools: Tool[] = [
     description: "Hvad anlægget og batterierne faktisk sparer, time for time.",
     icon: "☀️",
   },
+  {
+    href: "/traening",
+    name: "Træning",
+    description: "Log pas, vægte og gentagelser, og se fremgangen.",
+    icon: "💪",
+  },
 ];
