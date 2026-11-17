@@ -340,3 +340,109 @@ code {
   border-radius: 5px;
   font-size: 0.88em;
 }
+
+/* Træning */
+.notice.good {
+  border-left-color: var(--good);
+}
+
+textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem;
+  width: 100%;
+  resize: vertical;
+}
+
+input[inputmode] {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem;
+  min-height: 42px;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+input.short {
+  width: 7rem;
+}
+
+.exercise p {
+  margin: 0.35rem 0;
+}
+
+.exercise-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.exercise .hint {
+  font-size: 0.92rem;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.sets {
+  margin-top: 0.6rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.set-row {
+  display: grid;
+  grid-template-columns: 2rem 1fr 1fr 42px;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.set-head {
+  margin-bottom: -0.15rem;
+}
+
+.set-no {
+  text-align: center;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+button.icon {
+  padding: 0;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+button.small-btn {
+  min-height: 34px;
+  padding: 0.3rem 0.8rem;
+  font-size: 0.9rem;
+  width: fit-content;
+}
+
+button.danger {
+  background: var(--bad);
+  color: #fff;
+  border-color: var(--bad);
+}
+
+.save-btn {
+  width: 100%;
+  min-height: 50px;
+  font-size: 1.05rem;
+}
+
+.history-list {
+  margin: 0.6rem 0;
+  padding-left: 1.1rem;
+  font-size: 0.92rem;
+}
+
+.history-list li + li {
+  margin-top: 0.2rem;
+}

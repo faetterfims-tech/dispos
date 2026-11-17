@@ -53,3 +53,9 @@ export async function hgetall(key: string): Promise<Record<string, string>> {
 export async function set(key: string, value: string): Promise<void> {
   await command(["SET", key, value]);
 }
+
+/** Sletter felter i en hash. */
+export async function hdel(key: string, ...fields: string[]): Promise<void> {
+  if (fields.length === 0) return;
+  await command(["HDEL", key, ...fields]);
+}

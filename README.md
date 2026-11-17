@@ -22,6 +22,17 @@ Husforbrug pr. time = købt + sol + afladet − solgt − opladet.
 - **SunMate** (produktion, op/afladning): API'et har kun dagens tidslinje, så den samles løbende. GitHub Actions kalder `/api/sunmate/collect` hvert 20. minut (`.github/workflows/sunmate.yml`), som regner watt om til kWh pr. time og gemmer i Upstash Redis. Historik før indsamlingen kan indlæses som CSV med timetal.
 - Beregningen er ren TypeScript uden afhængigheder: `lib/solar/engine.ts` med tests i `engine.test.ts`.
 
+### Træning (`/traening`)
+
+Træningslog til hjemmeprogrammet (4 styrkepas + 2 intervalpas om ugen).
+
+- **Træn**: vælg dagens pas, og felterne er udfyldt ud fra sidste gang med et konkret mål (fx "alle sæt nåede 12 → +2 kg"). Kladden gemmes i browseren, så intet forsvinder midt i et pas.
+- **Fremgang**: pas pr. uge, vægt og livvidde siden start, og styrke pr. øvelse over tid (estimeret maks for vægtøvelser).
+- **Krop**: vægt og livvidde med grafer.
+- **Historik**: alle pas med mulighed for at slette.
+
+Programmet ligger i `lib/traening/program.ts`, logikken i `lib/traening/logic.ts` (tests i `logic.test.ts`). Data gemmes i Upstash Redis (`traening:sessions`, `traening:body`) via `app/api/traening/route.ts`.
+
 ## Miljøvariabler (Vercel → Settings → Environment Variables)
 
 | Navn | |
