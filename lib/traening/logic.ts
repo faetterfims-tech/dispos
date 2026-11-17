@@ -111,8 +111,8 @@ export function score(unit: Unit, log: ExerciseLog): number {
 }
 
 export const scoreLabel: Record<Unit, string> = {
-  kg: "Estimeret maks (kg)",
-  reps: "Gentagelser i alt",
+  kg: "Styrke: beregnet maks-løft (kg)",
+  reps: "Antal i alt",
   sek: "Længste hold (sek)",
   runder: "Runder",
 };
@@ -140,8 +140,8 @@ export function suggest(ex: Exercise, last: ExerciseLog | null): { sets: SetEntr
       sets: Array.from({ length: ex.sets }, () => ({ kg: startKg, reps: ex.unit === "kg" ? lo : 0 })),
       hint:
         ex.unit === "kg"
-          ? `Første gang: find en vægt, hvor du kan tage ${lo}–${hi} gentagelser med 1–2 i overskud.`
-          : "Første gang: notér hvad du kan, så har du noget at slå næste gang.",
+          ? `Første gang: find en vægt, hvor du kan tage ${lo}–${hi} gange, og hvor de sidste føles hårde.`
+          : "Første gang: skriv ned, hvad du kan, så har du noget at slå næste gang.",
     };
   }
 
@@ -155,17 +155,17 @@ export function suggest(ex: Exercise, last: ExerciseLog | null): { sets: SetEntr
       if (atTop.length >= Math.min(ex.sets, prev.length) && atTop.every((s) => s.reps >= hi)) {
         return {
           sets: Array.from({ length: Math.max(ex.sets, prev.length) }, () => ({ kg: topKg + KG_STEP, reps: lo })),
-          hint: `Alle sæt nåede ${hi} sidst. Gå op til ${fmtKg(topKg + KG_STEP)} kg og start forfra på ${lo}.`,
+          hint: `Alle sæt nåede ${hi} sidst. Gå op til ${fmtKg(topKg + KG_STEP)} kg, og start forfra på ${lo}.`,
         };
       }
       if (atTop.some((s) => s.reps < lo) && topKg > KG_STEP) {
-        return { sets: fill(topKg, lo), hint: `Under ${lo} gentagelser sidst. Bliv på ${fmtKg(topKg)} kg (eller gå lidt ned) og byg op igen.` };
+        return { sets: fill(topKg, lo), hint: `Under ${lo} gange sidst. Bliv på ${fmtKg(topKg)} kg (eller gå lidt ned), og byg op igen.` };
       }
-      return { sets: fill(topKg, lo).map((s) => ({ ...s, reps: Math.min(hi, s.reps + 1) })), hint: `Bliv på ${fmtKg(topKg)} kg og tag 1 gentagelse mere i hvert sæt.` };
+      return { sets: fill(topKg, lo).map((s) => ({ ...s, reps: Math.min(hi, s.reps + 1) })), hint: `Bliv på ${fmtKg(topKg)} kg, og tag 1 gang mere i hvert sæt.` };
     }
     case "reps": {
       const total = prev.reduce((s, x) => s + x.reps, 0);
-      return { sets: fill(prev[0]?.kg ?? 0, lo).map((s) => ({ ...s, reps: s.reps + 1 })), hint: `Sidst ${total} i alt. Slå det med bare 1–2.` };
+      return { sets: fill(prev[0]?.kg ?? 0, lo).map((s) => ({ ...s, reps: s.reps + 1 })), hint: `Sidst ${total} i alt. Prøv at slå det med bare 1–2.` };
     }
     case "sek": {
       const best = Math.max(...prev.map((s) => s.reps));
@@ -174,7 +174,7 @@ export function suggest(ex: Exercise, last: ExerciseLog | null): { sets: SetEntr
     case "runder": {
       const r = prev.reduce((s, x) => s + x.reps, 0);
       const next = Math.min(r + 1, hi);
-      return { sets: [{ kg: 0, reps: next }], hint: r >= hi ? `${r} runder sidst. Skru op for tempoet i stedet.` : `${r} runder sidst. Prøv ${next}.` };
+      return { sets: [{ kg: 0, reps: next }], hint: r >= hi ? `${r} runder sidst. Tag dem hårdere i stedet for flere.` : `${r} runder sidst. Prøv ${next}.` };
     }
   }
 }

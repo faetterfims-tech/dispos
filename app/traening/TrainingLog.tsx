@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { DAYS, EXERCISES, dayById, exerciseById, type Exercise, type Unit } from "@/lib/traening/program";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { DAYS, EXERCISES, RYG_OPVARMNING, dayById, exerciseById, videoUrl, type Day, type Exercise, type Unit } from "@/lib/traening/program";
 import {
   fmtKg,
   isoWeekday,
@@ -21,11 +21,13 @@ type Tab = "traen" | "fremgang" | "krop" | "historik";
 interface SetDraft {
   kg: string;
   reps: string;
+  done?: boolean;
 }
 interface Draft {
   date: string;
   dayId: string;
   sets: Record<string, SetDraft[]>;
+  warmup?: boolean[];
   note: string;
 }
 interface Data {
@@ -34,7 +36,7 @@ interface Data {
   body: BodyEntry[];
 }
 
-const STORAGE = { draft: "dispos.traening.draft", local: "dispos.traening.local" };
+const STORAGE = { draft: "dispos.traening.draft.v2", local: "dispos.traening.local" };
 
 function load<T>(key: string): T | null {
   try {
@@ -55,10 +57,18 @@ function save(key: string, value: unknown) {
 
 const today = () => new Date().toLocaleDateString("sv-SE");
 const fmtDate = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("da-DK", { weekday: "short", day: "numeric", month: "short" });
+const fmtLong = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("da-DK", { weekday: "long", day: "numeric", month: "long" });
 const toNum = (s: string) => Number(s.replace(",", "."));
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+const addDays = (d: string, n: number) => {
+  const x = new Date(`${d}T12:00:00Z`);
+  x.setUTCDate(x.getUTCDate() + n);
+  return x.toISOString().slice(0, 10);
+};
 
-const UNIT_LABEL: Record<Unit, string> = { kg: "gent.", reps: "gent.", sek: "sek", runder: "runder" };
+/** Overskrift på tal-feltet. */
+const COUNT_LABEL: Record<Unit, string> = { kg: "antal", reps: "antal", sek: "sekunder", runder: "runder" };
+const WEEKDAYS = ["Man", "Tir", "Ons", "Tor", "Fre", "Lør", "Søn"];
 
 function dayForDate(date: string) {
   const wd = isoWeekday(date);
@@ -71,18 +81,19 @@ function buildDraft(date: string, dayId: string, sessions: Session[]): Draft {
   for (const ex of day.exercises) {
     const last = lastLog(sessions, ex.id, date);
     sets[ex.id] = suggest(ex, last?.log ?? null).sets.map((s) => ({
-      kg: ex.unit === "kg" || (ex.unit === "reps" && s.kg) ? (s.kg ? fmtKg(s.kg) : "") : "",
+      kg: ex.unit === "kg" && s.kg ? fmtKg(s.kg) : "",
       reps: s.reps ? String(s.reps) : "",
+      done: false,
     }));
   }
-  return { date, dayId: day.id, sets, note: "" };
+  return { date, dayId: day.id, sets, warmup: RYG_OPVARMNING.map(() => false), note: "" };
 }
 
 function fmtSets(ex: Exercise | undefined, sets: { kg: number; reps: number }[]) {
-  if (!ex) return sets.map((s) => `${s.kg}×${s.reps}`).join(", ");
-  if (ex.unit === "kg") return sets.map((s) => `${fmtKg(s.kg)}×${s.reps}`).join(", ");
-  if (ex.unit === "reps") return sets.map((s) => (s.kg ? `${s.reps} (+${fmtKg(s.kg)} kg)` : String(s.reps))).join(", ");
-  if (ex.unit === "sek") return sets.map((s) => `${s.reps}s`).join(", ");
+  if (!ex) return sets.map((s) => `${s.kg} kg × ${s.reps}`).join(" · ");
+  if (ex.unit === "kg") return sets.map((s) => `${fmtKg(s.kg)} kg × ${s.reps}`).join(" · ");
+  if (ex.unit === "reps") return sets.map((s) => (s.kg ? `${s.reps} (+${fmtKg(s.kg)} kg)` : `${s.reps}`)).join(" · ") + " gange";
+  if (ex.unit === "sek") return sets.map((s) => `${s.reps} sek`).join(" · ");
   return `${sets.reduce((a, s) => a + s.reps, 0)} runder`;
 }
 
@@ -94,7 +105,6 @@ export default function TrainingLog() {
   const [saving, setSaving] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
 
-  // Hent data
   useEffect(() => {
     (async () => {
       try {
@@ -113,7 +123,7 @@ export default function TrainingLog() {
     })();
   }, []);
 
-  // Start-kladde: gemt kladde, ellers dagens program
+  // Start: en igangværende træning fra i dag, ellers dagens pas.
   useEffect(() => {
     if (!data || draft) return;
     const saved = load<Draft>(STORAGE.draft);
@@ -134,7 +144,7 @@ export default function TrainingLog() {
 
   const showFlash = (msg: string) => {
     setFlash(msg);
-    setTimeout(() => setFlash(null), 3000);
+    setTimeout(() => setFlash(null), 3500);
   };
 
   async function api(method: "POST" | "DELETE", body?: unknown, query?: string) {
@@ -161,13 +171,14 @@ export default function TrainingLog() {
         .map((ex) => ({
           id: ex.id,
           sets: (draft.sets[ex.id] ?? [])
+            .filter((s) => s.done)
             .map((s) => ({ kg: s.kg ? toNum(s.kg) : 0, reps: toNum(s.reps) }))
             .filter((s) => Number.isFinite(s.kg) && Number.isFinite(s.reps) && s.reps > 0),
         }))
         .filter((e) => e.sets.length),
     };
     if (!session.exercises.length) {
-      setError("Udfyld mindst ét sæt med gentagelser.");
+      setError("Sæt ✓ ved de sæt, du har lavet, før du gemmer.");
       return;
     }
     setSaving(true);
@@ -178,11 +189,11 @@ export default function TrainingLog() {
       setData(next);
       persistLocal(next);
       save(STORAGE.draft, null);
-      const nextDate = today();
-      const nextDay = dayForDate(nextDate);
-      setDraft(buildDraft(nextDate, nextDay && nextDay.id !== draft.dayId ? nextDay.id : draft.dayId, next.sessions));
-      showFlash("Pas gemt 💪");
+      const nextDay = dayForDate(today());
+      setDraft(buildDraft(today(), nextDay && nextDay.id !== draft.dayId ? nextDay.id : draft.dayId, next.sessions));
+      showFlash("Træningen er gemt. Godt gået! 💪");
       setTab("historik");
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Kunne ikke gemme.");
     } finally {
@@ -203,15 +214,15 @@ export default function TrainingLog() {
   }
 
   async function saveBodyEntry(entry: { date: string; weightKg: string; waistCm: string }) {
-    if (!data) return;
+    if (!data) return false;
     const clean: BodyEntry = {
       date: entry.date,
       ...(entry.weightKg ? { weightKg: toNum(entry.weightKg) } : {}),
       ...(entry.waistCm ? { waistCm: toNum(entry.waistCm) } : {}),
     };
     if (!clean.weightKg && !clean.waistCm) {
-      setError("Skriv vægt og/eller livvidde.");
-      return;
+      setError("Skriv din vægt og/eller dit mål om maven.");
+      return false;
     }
     setError(null);
     try {
@@ -220,9 +231,11 @@ export default function TrainingLog() {
       const next = { ...data, body: [...data.body.filter((b) => b.date !== saved.date), merged].sort((a, b) => a.date.localeCompare(b.date)) };
       setData(next);
       persistLocal(next);
-      showFlash("Mål gemt");
+      showFlash("Gemt");
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Kunne ikke gemme.");
+      return false;
     }
   }
 
@@ -241,23 +254,24 @@ export default function TrainingLog() {
   if (!data || !draft) return <p className="muted">Henter…</p>;
 
   return (
-    <div className="stack">
-      <div className="tabs" role="tablist">
+    <div className="tr stack">
+      <div className="tr-tabs" role="tablist">
         {(
           [
-            ["traen", "Træn"],
-            ["fremgang", "Fremgang"],
-            ["krop", "Krop"],
-            ["historik", "Historik"],
-          ] as [Tab, string][]
-        ).map(([id, label]) => (
-          <button key={id} aria-pressed={tab === id} onClick={() => setTab(id)}>
+            ["traen", "🏋️", "Træn"],
+            ["fremgang", "📈", "Fremgang"],
+            ["krop", "⚖️", "Vægt"],
+            ["historik", "🗓️", "Tidligere"],
+          ] as [Tab, string, string][]
+        ).map(([id, icon, label]) => (
+          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>
+            <span aria-hidden>{icon}</span>
             {label}
           </button>
         ))}
       </div>
 
-      {!data.configured && <div className="notice">Lageret er ikke koblet på, så loggen gemmes kun i denne browser.</div>}
+      {!data.configured && <div className="notice">Databasen er ikke koblet på, så det gemmes kun på denne telefon.</div>}
       {error && <div className="notice error">{error}</div>}
       {flash && <div className="notice good">{flash}</div>}
 
@@ -267,7 +281,7 @@ export default function TrainingLog() {
           sessions={data.sessions}
           saving={saving}
           onChange={setDraft}
-          onPickDay={(dayId) => setDraft(buildDraft(draft.date, dayId, data.sessions))}
+          onPick={(date, dayId) => setDraft(buildDraft(date, dayId, data.sessions))}
           onSave={saveSession}
         />
       )}
@@ -280,23 +294,54 @@ export default function TrainingLog() {
 
 /* ---------- Træn ---------- */
 
-function TrainTab({
+function WeekStrip({ sessions, selected, onPick }: { sessions: Session[]; selected: string; onPick: (date: string) => void }) {
+  const monday = weekStart(today());
+  const done = new Set(sessions.map((s) => s.date));
+  return (
+    <div className="tr-week">
+      {WEEKDAYS.map((label, i) => {
+        const date = addDays(monday, i);
+        const day = DAYS.find((d) => d.weekday === i + 1);
+        const isToday = date === today();
+        const future = date > today();
+        return (
+          <button
+            key={date}
+            className={`tr-weekday${date === selected ? " selected" : ""}${isToday ? " today" : ""}`}
+            disabled={future}
+            onClick={() => onPick(date)}
+            style={{ "--c": day?.color ?? "#9b988f" } as CSSProperties}
+            aria-label={`${label}: ${day?.name ?? "Hvile"}${done.has(date) ? ", trænet" : ""}`}
+          >
+            <span className="tr-weekday-label">{label}</span>
+            <span className={`tr-dot${done.has(date) ? " done" : ""}`}>{done.has(date) ? "✓" : new Date(`${date}T12:00:00`).getDate()}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+export function TrainTab({
   draft,
   sessions,
   saving,
   onChange,
-  onPickDay,
+  onPick,
   onSave,
 }: {
   draft: Draft;
   sessions: Session[];
   saving: boolean;
   onChange: (d: Draft) => void;
-  onPickDay: (dayId: string) => void;
+  onPick: (date: string, dayId: string) => void;
   onSave: () => void;
 }) {
   const day = dayById(draft.dayId) ?? DAYS[0];
   const planned = dayForDate(draft.date);
+  const total = day.exercises.reduce((n, ex) => n + (draft.sets[ex.id]?.length ?? 0), 0);
+  const doneSets = day.exercises.reduce((n, ex) => n + (draft.sets[ex.id]?.filter((s) => s.done).length ?? 0), 0);
+  const warm = draft.warmup ?? RYG_OPVARMNING.map(() => false);
 
   const setRow = (exId: string, i: number, patch: Partial<SetDraft>) => {
     const rows = [...(draft.sets[exId] ?? [])];
@@ -306,106 +351,189 @@ function TrainTab({
   const addRow = (exId: string) => {
     const rows = draft.sets[exId] ?? [];
     const lastRow = rows[rows.length - 1] ?? { kg: "", reps: "" };
-    onChange({ ...draft, sets: { ...draft.sets, [exId]: [...rows, { ...lastRow }] } });
+    onChange({ ...draft, sets: { ...draft.sets, [exId]: [...rows, { kg: lastRow.kg, reps: lastRow.reps, done: false }] } });
   };
-  const removeRow = (exId: string, i: number) => {
-    const rows = (draft.sets[exId] ?? []).filter((_, j) => j !== i);
+  const removeRow = (exId: string) => {
+    const rows = (draft.sets[exId] ?? []).slice(0, -1);
     onChange({ ...draft, sets: { ...draft.sets, [exId]: rows } });
   };
 
   return (
     <>
-      <div className="card controls">
-        <label className="field">
-          Dato
-          <input type="date" value={draft.date} max={today()} onChange={(e) => e.target.value && onChange({ ...draft, date: e.target.value })} />
-        </label>
-        <label className="field" style={{ flex: 1, minWidth: 180 }}>
-          Pas
-          <select value={draft.dayId} onChange={(e) => onPickDay(e.target.value)}>
-            {DAYS.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
-                {planned?.id === d.id ? " (dagens)" : ""}
-              </option>
-            ))}
-          </select>
-        </label>
-        {!planned && <p className="small" style={{ width: "100%", margin: 0 }}>Søndag er hviledag i programmet, men du kan sagtens logge alligevel.</p>}
+      <WeekStrip sessions={sessions} selected={draft.date} onPick={(date) => onPick(date, (dayForDate(date) ?? DAYS[0]).id)} />
+
+      <div className="tr-hero" style={{ "--c": day.color } as CSSProperties}>
+        <div className="tr-hero-date">{draft.date === today() ? "I dag" : fmtLong(draft.date)}</div>
+        <div className="tr-hero-title">{day.name}</div>
+        <div className="tr-hero-meta">
+          {day.exercises.length === 1 ? "1 øvelse" : `${day.exercises.length} øvelser`} · {day.minutes}
+        </div>
+        <div className="tr-progress" aria-label={`${doneSets} af ${total} sæt lavet`}>
+          <div style={{ width: `${total ? (doneSets / total) * 100 : 0}%` }} />
+        </div>
+        <div className="tr-hero-meta">
+          {doneSets} af {total} sæt lavet
+        </div>
+        {!planned && <div className="tr-hero-note">Søndag er hviledag. Vil du alligevel træne, så vælg et pas herunder.</div>}
+        <select className="tr-hero-select" value={draft.dayId} onChange={(e) => onPick(draft.date, e.target.value)} aria-label="Skift pas">
+          {DAYS.map((d) => (
+            <option key={d.id} value={d.id}>
+              Skift pas: {d.name}
+            </option>
+          ))}
+        </select>
       </div>
 
-      {day.exercises.map((ex) => {
+      <div className="tr-how card">
+        <strong>Sådan gør du</strong>
+        <span className="small">
+          Tallene er udfyldt ud fra sidste gang. Lav sættet, ret tallene, hvis det gik anderledes, og tryk på <b>✓</b>. Hold 1–1½ min pause
+          mellem sættene.
+        </span>
+      </div>
+
+      {day.warmup && (
+        <div className="card tr-warmup">
+          <div className="tr-ex-head">
+            <span className="tr-num" style={{ background: "#b7791f" }}>
+              ★
+            </span>
+            <div>
+              <div className="tr-ex-name">Først: opvarmning af ryggen</div>
+              <span className="tr-chip">ca. 10 min · styrker lænden</span>
+            </div>
+          </div>
+          {RYG_OPVARMNING.map((w, i) => (
+            <label key={w.name} className={`tr-check${warm[i] ? " done" : ""}`}>
+              <input
+                type="checkbox"
+                checked={warm[i] ?? false}
+                onChange={(e) => {
+                  const next = [...warm];
+                  next[i] = e.target.checked;
+                  onChange({ ...draft, warmup: next });
+                }}
+              />
+              <span>
+                <b>{w.name}</b> · {w.dose}
+                <span className="small">{w.how}</span>
+                <a className="tr-video" href={videoUrl(w.aka)} target="_blank" rel="noreferrer">
+                  ▶ Se hvordan
+                </a>
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+
+      {day.exercises.map((ex, idx) => {
         const last = lastLog(sessions, ex.id, draft.date);
         const tip = suggest(ex, last?.log ?? null);
         const rows = draft.sets[ex.id] ?? [];
-        const showKg = ex.unit === "kg" || ex.unit === "reps";
+        const showKg = ex.unit === "kg";
+        const allDone = rows.length > 0 && rows.every((r) => r.done);
         return (
-          <div key={ex.id} className="card exercise">
-            <div className="exercise-head">
-              <strong>{ex.name}</strong>
-              <span className="small">
-                {ex.unit === "runder" ? `${ex.target[0]}–${ex.target[1]} runder` : `${ex.sets} × ${ex.target[0]}–${ex.target[1]} ${UNIT_LABEL[ex.unit]}`}
+          <div key={ex.id} className={`card tr-ex${allDone ? " complete" : ""}`}>
+            <div className="tr-ex-head">
+              <span className="tr-num" style={{ background: allDone ? "var(--good)" : day.color }}>
+                {allDone ? "✓" : idx + 1}
               </span>
+              <div>
+                <div className="tr-ex-name">{ex.name}</div>
+                <span className="tr-chip">{ex.muscles}</span>
+              </div>
             </div>
-            {last && (
-              <p className="small last">
-                Sidst ({fmtDate(last.date)}): {fmtSets(ex, last.log.sets)}
-              </p>
-            )}
-            <p className="hint">{tip.hint}</p>
-            {ex.tip && <p className="small">{ex.tip}</p>}
 
-            <div className="sets">
-              <div className="set-row set-head small">
+            <p className="tr-ex-how">{ex.how}</p>
+            {ex.aka && (
+              <a className="tr-video" href={videoUrl(ex.aka)} target="_blank" rel="noreferrer">
+                ▶ Se hvordan
+              </a>
+            )}
+
+            <div className="tr-goal">
+              <div>
+                <span className="tr-goal-label">Mål</span>
+                {ex.unit === "runder"
+                  ? `${ex.target[0]}–${ex.target[1]} runder`
+                  : `${ex.sets} sæt à ${ex.target[0]}–${ex.target[1]} ${ex.unit === "sek" ? "sekunder" : "gange"}`}
+              </div>
+              {last && (
+                <div>
+                  <span className="tr-goal-label">Sidst</span>
+                  {fmtSets(ex, last.log.sets)} <span className="small">({fmtDate(last.date)})</span>
+                </div>
+              )}
+              <div className="tr-goal-hint">👉 {tip.hint}</div>
+            </div>
+
+            <div className="tr-sets">
+              <div className={`tr-set-row tr-set-head${showKg ? "" : " no-kg"}`}>
                 <span>Sæt</span>
-                {showKg ? <span>{ex.unit === "kg" ? "kg" : "+kg"}</span> : <span />}
-                <span>{UNIT_LABEL[ex.unit]}</span>
-                <span />
+                {showKg && <span>kg</span>}
+                <span>{COUNT_LABEL[ex.unit]}</span>
+                <span>Lavet</span>
               </div>
               {rows.map((r, i) => (
-                <div key={i} className="set-row">
-                  <span className="set-no">{i + 1}</span>
-                  {showKg ? (
+                <div key={i} className={`tr-set-row${showKg ? "" : " no-kg"}${r.done ? " done" : ""}`}>
+                  <span className="tr-set-no">{i + 1}</span>
+                  {showKg && (
                     <input
                       inputMode="decimal"
-                      placeholder={ex.unit === "kg" ? "kg" : "0"}
+                      placeholder="kg"
                       value={r.kg}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setRow(ex.id, i, { kg: e.target.value })}
-                      aria-label={`Sæt ${i + 1} kg`}
+                      aria-label={`Sæt ${i + 1}, kg`}
                     />
-                  ) : (
-                    <span />
                   )}
                   <input
                     inputMode="numeric"
                     placeholder="0"
                     value={r.reps}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setRow(ex.id, i, { reps: e.target.value })}
-                    aria-label={`Sæt ${i + 1} ${UNIT_LABEL[ex.unit]}`}
+                    aria-label={`Sæt ${i + 1}, ${COUNT_LABEL[ex.unit]}`}
                   />
-                  <button className="icon secondary" onClick={() => removeRow(ex.id, i)} aria-label={`Fjern sæt ${i + 1}`}>
-                    ×
+                  <button
+                    className={`tr-done${r.done ? " on" : ""}`}
+                    onClick={() => setRow(ex.id, i, { done: !r.done })}
+                    aria-pressed={!!r.done}
+                    aria-label={`Sæt ${i + 1} lavet`}
+                  >
+                    ✓
                   </button>
                 </div>
               ))}
-              <button className="secondary small-btn" onClick={() => addRow(ex.id)}>
-                + sæt
-              </button>
+              <div className="tr-set-actions">
+                <button className="secondary small-btn" onClick={() => addRow(ex.id)}>
+                  + Ekstra sæt
+                </button>
+                {rows.length > 1 && (
+                  <button className="tr-link" onClick={() => removeRow(ex.id)}>
+                    Fjern sidste sæt
+                  </button>
+                )}
+              </div>
             </div>
+
+            {ex.tip && <p className="tr-tip">💡 {ex.tip}</p>}
           </div>
         );
       })}
 
       <div className="card">
         <label className="field">
-          Note (valgfri)
-          <textarea rows={2} value={draft.note} onChange={(e) => onChange({ ...draft, note: e.target.value })} placeholder="Fx ondt i skulderen, god energi…" />
+          Noter (valgfrit)
+          <textarea rows={2} value={draft.note} onChange={(e) => onChange({ ...draft, note: e.target.value })} placeholder="Fx ondt i ryggen, masser af energi…" />
         </label>
       </div>
 
-      <button className="save-btn" onClick={onSave} disabled={saving}>
-        {saving ? "Gemmer…" : "Gem træning"}
-      </button>
+      <div className="tr-savebar">
+        <button className="save-btn" onClick={onSave} disabled={saving || doneSets === 0}>
+          {saving ? "Gemmer…" : doneSets === 0 ? "Tryk ✓ ved dine sæt for at gemme" : `Gem træningen (${doneSets} sæt)`}
+        </button>
+      </div>
     </>
   );
 }
@@ -420,8 +548,6 @@ function ProgressTab({ sessions, body }: { sessions: Session[]; body: BodyEntry[
   const week = weekStart(today());
   const perWeek = sessionsPerWeek(sessions);
   const thisWeek = perWeek.find((w) => w.week === week)?.count ?? 0;
-  const last4 = perWeek.filter((w) => w.week < week).slice(0, 4);
-  const avg = last4.length ? last4.reduce((a, w) => a + w.count, 0) / last4.length : null;
   const weights = body.filter((b) => b.weightKg);
   const waists = body.filter((b) => b.waistCm);
   const dW = weights.length > 1 ? weights[weights.length - 1].weightKg! - weights[0].weightKg! : null;
@@ -435,12 +561,12 @@ function ProgressTab({ sessions, body }: { sessions: Session[]; body: BodyEntry[
     <>
       <div className="kpis">
         <div className="card kpi">
-          <div className="value">{thisWeek} / 6</div>
-          <div className="label">Pas denne uge</div>
+          <div className="value">{thisWeek} af 6</div>
+          <div className="label">Træninger denne uge</div>
         </div>
         <div className="card kpi">
-          <div className="value">{avg === null ? "–" : avg.toLocaleString("da-DK", { maximumFractionDigits: 1 })}</div>
-          <div className="label">Pas pr. uge (sidste 4 uger)</div>
+          <div className="value">{sessions.length}</div>
+          <div className="label">Træninger i alt</div>
         </div>
         <div className="card kpi">
           <div className="value">{dW === null ? "–" : signed(dW, "kg")}</div>
@@ -448,25 +574,23 @@ function ProgressTab({ sessions, body }: { sessions: Session[]; body: BodyEntry[
         </div>
         <div className="card kpi">
           <div className="value">{dWaist === null ? "–" : signed(dWaist, "cm")}</div>
-          <div className="label">Livvidde siden start</div>
+          <div className="label">Om maven siden start</div>
         </div>
       </div>
 
       <div className="card">
-        <h2>Styrke pr. øvelse</h2>
+        <h2>Bliver du stærkere?</h2>
         {used.length === 0 ? (
-          <p className="small">Gem dit første pas, så kommer fremgangen her.</p>
+          <p className="small">Gem din første træning, så kan du følge med her.</p>
         ) : (
           <>
-            <div className="controls" style={{ marginBottom: "0.75rem" }}>
-              <select value={ex?.id} onChange={(e) => setExId(e.target.value)} style={{ flex: 1 }}>
-                {used.map((e) => (
-                  <option key={e.id} value={e.id}>
-                    {e.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <select value={ex?.id} onChange={(e) => setExId(e.target.value)} style={{ width: "100%", marginBottom: "0.75rem" }}>
+              {used.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                </option>
+              ))}
+            </select>
             {ex && (
               <>
                 <p className="small" style={{ marginTop: 0 }}>
@@ -482,7 +606,7 @@ function ProgressTab({ sessions, body }: { sessions: Session[]; body: BodyEntry[
                     </>
                   )}
                 </p>
-                <LineChart points={series} unit={ex.unit === "kg" ? "kg" : UNIT_LABEL[ex.unit]} />
+                <LineChart points={series} unit={ex.unit === "kg" ? "kg" : COUNT_LABEL[ex.unit]} />
               </>
             )}
           </>
@@ -492,7 +616,7 @@ function ProgressTab({ sessions, body }: { sessions: Session[]; body: BodyEntry[
   );
 }
 
-/* ---------- Krop ---------- */
+/* ---------- Vægt og mål ---------- */
 
 function BodyTab({
   body,
@@ -500,7 +624,7 @@ function BodyTab({
   onDelete,
 }: {
   body: BodyEntry[];
-  onSave: (e: { date: string; weightKg: string; waistCm: string }) => void;
+  onSave: (e: { date: string; weightKg: string; waistCm: string }) => Promise<boolean>;
   onDelete: (date: string) => void;
 }) {
   const [form, setForm] = useState({ date: today(), weightKg: "", waistCm: "" });
@@ -510,9 +634,10 @@ function BodyTab({
   return (
     <>
       <div className="card">
-        <h2>Nye mål</h2>
+        <h2>Vej og mål dig</h2>
         <p className="small" style={{ marginTop: 0 }}>
-          Vej dig om morgenen før morgenmad, og mål livvidden i navlehøjde. Én gang om ugen er nok, fordi vægten svinger fra dag til dag.
+          Én gang om ugen er nok: om morgenen, før du spiser. Mål om maven i højde med navlen. Det mål viser bedre end vægten, om maven bliver
+          mindre, fordi du samtidig tager muskler på.
         </p>
         <div className="controls">
           <label className="field">
@@ -524,13 +649,12 @@ function BodyTab({
             <input inputMode="decimal" className="short" value={form.weightKg} onChange={(e) => setForm({ ...form, weightKg: e.target.value })} placeholder="85" />
           </label>
           <label className="field">
-            Livvidde (cm)
+            Om maven (cm)
             <input inputMode="decimal" className="short" value={form.waistCm} onChange={(e) => setForm({ ...form, waistCm: e.target.value })} placeholder="100" />
           </label>
           <button
-            onClick={() => {
-              onSave(form);
-              setForm({ ...form, weightKg: "", waistCm: "" });
+            onClick={async () => {
+              if (await onSave(form)) setForm({ ...form, weightKg: "", waistCm: "" });
             }}
           >
             Gem
@@ -543,7 +667,7 @@ function BodyTab({
         <LineChart points={weights} unit="kg" />
       </div>
       <div className="card">
-        <h2>Livvidde</h2>
+        <h2>Om maven</h2>
         <LineChart points={waists} unit="cm" color="var(--series-2)" />
       </div>
 
@@ -554,7 +678,7 @@ function BodyTab({
               <tr>
                 <th>Dato</th>
                 <th>Vægt</th>
-                <th>Livvidde</th>
+                <th>Om maven</th>
                 <th />
               </tr>
             </thead>
@@ -577,22 +701,26 @@ function BodyTab({
   );
 }
 
-/* ---------- Historik ---------- */
+/* ---------- Tidligere træninger ---------- */
 
-function HistoryTab({ sessions, onDelete }: { sessions: Session[]; onDelete: (id: string) => void }) {
-  if (!sessions.length) return <p className="muted">Ingen pas endnu. Gå til “Træn” og log dit første.</p>;
+export function HistoryTab({ sessions, onDelete }: { sessions: Session[]; onDelete: (id: string) => void }) {
+  if (!sessions.length) return <p className="muted">Ingen træninger endnu. Gå til “Træn”, og gem din første.</p>;
   const sorted = [...sessions].sort((a, b) => b.date.localeCompare(a.date) || (b.savedAt ?? "").localeCompare(a.savedAt ?? ""));
   return (
     <>
       {sorted.map((s) => {
+        const day: Day | undefined = dayById(s.dayId);
         const vol = volume(s, (id) => exerciseById(id)?.unit);
         return (
-          <details key={s.id} className="card">
+          <details key={s.id} className="card tr-hist" style={{ "--c": day?.color ?? "var(--accent)" } as CSSProperties}>
             <summary>
-              {fmtDate(s.date)} · {dayById(s.dayId)?.name ?? s.dayId}
-              <span className="small" style={{ fontWeight: 400 }}>
-                {" "}
-                · {s.exercises.length} øvelser{vol ? ` · ${vol.toLocaleString("da-DK")} kg løftet` : ""}
+              <span className="tr-hist-bar" />
+              <span>
+                <strong>{day?.name ?? s.dayId}</strong>
+                <span className="small">
+                  {fmtDate(s.date)} · {s.exercises.length} {s.exercises.length === 1 ? "øvelse" : "øvelser"}
+                  {vol ? ` · ${vol.toLocaleString("da-DK")} kg løftet i alt` : ""}
+                </span>
               </span>
             </summary>
             <ul className="history-list">
@@ -602,8 +730,8 @@ function HistoryTab({ sessions, onDelete }: { sessions: Session[]; onDelete: (id
                 </li>
               ))}
             </ul>
-            {s.note && <p className="small">{s.note}</p>}
-            <ConfirmDelete label="Slet pas" onConfirm={() => onDelete(s.id)} />
+            {s.note && <p className="small">📝 {s.note}</p>}
+            <ConfirmDelete label="Slet træning" onConfirm={() => onDelete(s.id)} />
           </details>
         );
       })}
@@ -620,7 +748,7 @@ function ConfirmDelete({ onConfirm, label = "Slet" }: { onConfirm: () => void; l
   }, [armed]);
   return (
     <button className={`secondary small-btn${armed ? " danger" : ""}`} onClick={() => (armed ? onConfirm() : setArmed(true))}>
-      {armed ? "Sikker?" : label}
+      {armed ? "Tryk igen for at slette" : label}
     </button>
   );
 }
