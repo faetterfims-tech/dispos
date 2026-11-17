@@ -371,53 +371,6 @@ input.short {
   width: 7rem;
 }
 
-.exercise p {
-  margin: 0.35rem 0;
-}
-
-.exercise-head {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.exercise .hint {
-  font-size: 0.92rem;
-  color: var(--accent);
-  font-weight: 500;
-}
-
-.sets {
-  margin-top: 0.6rem;
-  display: grid;
-  gap: 0.4rem;
-}
-
-.set-row {
-  display: grid;
-  grid-template-columns: 2rem 1fr 1fr 42px;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.set-head {
-  margin-bottom: -0.15rem;
-}
-
-.set-no {
-  text-align: center;
-  color: var(--text-3);
-  font-variant-numeric: tabular-nums;
-}
-
-button.icon {
-  padding: 0;
-  font-size: 1.2rem;
-  line-height: 1;
-}
-
 button.small-btn {
   min-height: 34px;
   padding: 0.3rem 0.8rem;
@@ -445,4 +398,414 @@ button.danger {
 
 .history-list li + li {
   margin-top: 0.2rem;
+}
+
+/* Træning — nyt design */
+.tr-tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.25rem;
+  background: var(--surface-2);
+  border-radius: 14px;
+  padding: 0.25rem;
+}
+
+.tr-tabs button {
+  background: transparent;
+  color: var(--text-2);
+  min-height: 52px;
+  padding: 0.3rem 0.2rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  border-radius: 11px;
+}
+
+.tr-tabs button span {
+  font-size: 1.15rem;
+}
+
+.tr-tabs button[aria-selected="true"] {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.1);
+}
+
+.tr-week {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.3rem;
+}
+
+.tr-weekday {
+  background: transparent;
+  color: var(--text-2);
+  padding: 0.3rem 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  font-weight: 500;
+}
+
+.tr-weekday:disabled {
+  opacity: 0.45;
+}
+
+.tr-weekday-label {
+  font-size: 0.75rem;
+}
+
+.tr-dot {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.9rem;
+  font-weight: 700;
+  border: 2px solid color-mix(in srgb, var(--c) 45%, transparent);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.tr-dot.done {
+  background: var(--c);
+  border-color: var(--c);
+  color: #fff;
+}
+
+.tr-weekday.today .tr-weekday-label {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.tr-weekday.selected .tr-dot {
+  box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--c);
+}
+
+.tr-hero {
+  background: linear-gradient(135deg, var(--c), color-mix(in srgb, var(--c) 70%, #000));
+  color: #fff;
+  border-radius: 20px;
+  padding: 1.2rem 1.2rem 1rem;
+  box-shadow: 0 8px 24px color-mix(in srgb, var(--c) 30%, transparent);
+}
+
+.tr-hero-date {
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.tr-hero-date::first-letter {
+  text-transform: uppercase;
+}
+
+.tr-hero-title {
+  font-size: 1.9rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  margin: 0.15rem 0 0.25rem;
+}
+
+.tr-hero-meta {
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.tr-hero-note {
+  margin-top: 0.6rem;
+  font-size: 0.88rem;
+  background: rgb(255 255 255 / 0.15);
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+}
+
+.tr-progress {
+  height: 8px;
+  border-radius: 99px;
+  background: rgb(255 255 255 / 0.25);
+  margin: 0.8rem 0 0.35rem;
+  overflow: hidden;
+}
+
+.tr-progress div {
+  height: 100%;
+  background: #fff;
+  border-radius: 99px;
+  transition: width 0.3s;
+}
+
+.tr-hero-select {
+  margin-top: 0.8rem;
+  width: 100%;
+  background: rgb(255 255 255 / 0.16) !important;
+  border: 1px solid rgb(255 255 255 / 0.3) !important;
+  color: #fff !important;
+  font-weight: 600;
+}
+
+.tr-hero-select option {
+  color: #000;
+}
+
+.tr-how {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  background: var(--surface-2);
+}
+
+.tr-ex-head {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.tr-num {
+  flex: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  font-weight: 800;
+}
+
+.tr-ex-name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.tr-chip {
+  display: inline-block;
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border-radius: 99px;
+  padding: 0.1rem 0.55rem;
+}
+
+.tr-ex-how {
+  margin: 0.75rem 0 0.3rem;
+  font-size: 0.95rem;
+  color: var(--text-2);
+}
+
+.tr-video {
+  display: inline-block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+  margin-top: 0.2rem;
+}
+
+.tr-goal {
+  margin: 0.75rem 0;
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 0.65rem 0.8rem;
+  font-size: 0.92rem;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.tr-goal-label {
+  display: inline-block;
+  min-width: 3.2rem;
+  font-weight: 700;
+  color: var(--text-3);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tr-goal-hint {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.tr-sets {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.tr-set-row {
+  display: grid;
+  grid-template-columns: 2.4rem 1fr 1fr 52px;
+  gap: 0.5rem;
+  align-items: center;
+  border-radius: 12px;
+  transition: background 0.2s;
+}
+
+.tr-set-row.no-kg {
+  grid-template-columns: 2.4rem 1fr 52px;
+}
+
+.tr-set-head {
+  font-size: 0.75rem;
+  color: var(--text-3);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tr-set-head span:last-child {
+  text-align: center;
+}
+
+.tr-set-no {
+  text-align: center;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.tr-set-row input {
+  font-size: 1.15rem !important;
+  font-weight: 600;
+  text-align: center;
+  min-height: 48px !important;
+}
+
+.tr-set-row.done input {
+  background: color-mix(in srgb, var(--good) 12%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--good) 40%, var(--border));
+}
+
+.tr-done {
+  min-height: 48px;
+  width: 52px;
+  padding: 0;
+  font-size: 1.3rem;
+  background: var(--surface-2);
+  color: var(--text-3);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+}
+
+.tr-done.on {
+  background: var(--good);
+  border-color: var(--good);
+  color: #fff;
+}
+
+.tr-set-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-top: 0.2rem;
+}
+
+.tr-link {
+  background: none;
+  color: var(--text-3);
+  padding: 0;
+  min-height: 0;
+  font-weight: 500;
+  font-size: 0.85rem;
+  text-decoration: underline;
+}
+
+.tr-tip {
+  margin: 0.8rem 0 0;
+  font-size: 0.88rem;
+  color: var(--text-2);
+}
+
+.tr-ex.complete {
+  border-color: color-mix(in srgb, var(--good) 45%, var(--border));
+}
+
+.tr-warmup {
+  background: color-mix(in srgb, #f0b44c 10%, var(--surface));
+  border-color: color-mix(in srgb, #f0b44c 40%, var(--border));
+}
+
+.tr-check {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.75rem 0 0.1rem;
+  margin-top: 0.6rem;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.tr-check input {
+  width: 26px;
+  height: 26px;
+  margin-top: 0.1rem;
+  accent-color: var(--good);
+  flex: none;
+}
+
+.tr-check .small {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--text-2);
+}
+
+.tr-check.done b {
+  text-decoration: line-through;
+  color: var(--text-3);
+}
+
+.tr-savebar {
+  position: sticky;
+  bottom: 0;
+  padding: 0.75rem 0 calc(0.75rem + env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, var(--bg) 35%);
+}
+
+.tr-savebar .save-btn {
+  border-radius: 14px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.15);
+}
+
+.tr-hist {
+  padding: 0;
+  overflow: hidden;
+}
+
+.tr-hist summary {
+  display: flex;
+  gap: 0.8rem;
+  align-items: stretch;
+  padding: 0.85rem 1rem;
+  list-style: none;
+}
+
+.tr-hist summary::-webkit-details-marker {
+  display: none;
+}
+
+.tr-hist summary .small {
+  display: block;
+  font-weight: 400;
+}
+
+.tr-hist-bar {
+  width: 5px;
+  border-radius: 99px;
+  background: var(--c);
+  flex: none;
+}
+
+.tr-hist > :not(summary) {
+  margin-left: 1rem;
+  margin-right: 1rem;
+}
+
+.tr-hist > button {
+  margin-bottom: 1rem;
 }

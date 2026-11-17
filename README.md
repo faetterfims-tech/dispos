@@ -26,10 +26,10 @@ Husforbrug pr. time = købt + sol + afladet − solgt − opladet.
 
 Træningslog til hjemmeprogrammet (4 styrkepas + 2 intervalpas om ugen).
 
-- **Træn**: vælg dagens pas, og felterne er udfyldt ud fra sidste gang med et konkret mål (fx "alle sæt nåede 12 → +2 kg"). Kladden gemmes i browseren, så intet forsvinder midt i et pas.
-- **Fremgang**: pas pr. uge, vægt og livvidde siden start, og styrke pr. øvelse over tid (estimeret maks for vægtøvelser).
-- **Krop**: vægt og livvidde med grafer.
-- **Historik**: alle pas med mulighed for at slette.
+- **Træn**: ugens dage øverst, dagens pas med farve og fremskridt. Rygopvarmning før styrkepas. Hver øvelse har et almindeligt dansk navn, en kort forklaring og et link til en video. Tallene er udfyldt ud fra sidste gang, og man trykker ✓ ved hvert sæt, man har lavet. Kun sæt med ✓ bliver gemt.
+- **Fremgang**: træninger pr. uge, vægt og mål om maven siden start, og styrke pr. øvelse over tid.
+- **Vægt**: vægt og mål om maven med grafer.
+- **Tidligere**: alle træninger med mulighed for at slette.
 
 Programmet ligger i `lib/traening/program.ts`, logikken i `lib/traening/logic.ts` (tests i `logic.test.ts`). Data gemmes i Upstash Redis (`traening:sessions`, `traening:body`) via `app/api/traening/route.ts`.
 
