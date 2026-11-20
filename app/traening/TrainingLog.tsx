@@ -307,8 +307,7 @@ function WeekStrip({ sessions, selected, onPick }: { sessions: Session[]; select
         return (
           <button
             key={date}
-            className={`tr-weekday${date === selected ? " selected" : ""}${isToday ? " today" : ""}`}
-            disabled={future}
+            className={`tr-weekday${date === selected ? " selected" : ""}${isToday ? " today" : ""}${future ? " future" : ""}`}
             onClick={() => onPick(date)}
             style={{ "--c": day?.color ?? "#9b988f" } as CSSProperties}
             aria-label={`${label}: ${day?.name ?? "Hvile"}${done.has(date) ? ", trænet" : ""}`}
@@ -342,6 +341,26 @@ export function TrainTab({
   const total = day.exercises.reduce((n, ex) => n + (draft.sets[ex.id]?.length ?? 0), 0);
   const doneSets = day.exercises.reduce((n, ex) => n + (draft.sets[ex.id]?.filter((s) => s.done).length ?? 0), 0);
   const warm = draft.warmup ?? RYG_OPVARMNING.map(() => false);
+  /** En kommende dag, man kigger på. Rører ikke dagens igangværende træning. */
+  const [preview, setPreview] = useState<string | null>(null);
+
+  const pickDate = (date: string) => {
+    if (date > today()) {
+      setPreview(date);
+      return;
+    }
+    setPreview(null);
+    if (date !== draft.date) onPick(date, (dayForDate(date) ?? DAYS[0]).id);
+  };
+
+  if (preview) {
+    return (
+      <>
+        <WeekStrip sessions={sessions} selected={preview} onPick={pickDate} />
+        <PreviewDay date={preview} sessions={sessions} onBack={() => setPreview(null)} />
+      </>
+    );
+  }
 
   const setRow = (exId: string, i: number, patch: Partial<SetDraft>) => {
     const rows = [...(draft.sets[exId] ?? [])];
@@ -360,7 +379,7 @@ export function TrainTab({
 
   return (
     <>
-      <WeekStrip sessions={sessions} selected={draft.date} onPick={(date) => onPick(date, (dayForDate(date) ?? DAYS[0]).id)} />
+      <WeekStrip sessions={sessions} selected={draft.date} onPick={pickDate} />
 
       <div className="tr-hero" style={{ "--c": day.color } as CSSProperties}>
         <div className="tr-hero-date">{draft.date === today() ? "I dag" : fmtLong(draft.date)}</div>
@@ -534,6 +553,111 @@ export function TrainTab({
           {saving ? "Gemmer…" : doneSets === 0 ? "Tryk ✓ ved dine sæt for at gemme" : `Gem træningen (${doneSets} sæt)`}
         </button>
       </div>
+    </>
+  );
+}
+
+/* ---------- Kig frem ---------- */
+
+function relDay(date: string) {
+  const diff = Math.round((new Date(`${date}T12:00:00Z`).getTime() - new Date(`${today()}T12:00:00Z`).getTime()) / 86_400_000);
+  if (diff === 1) return `I morgen · ${fmtLong(date)}`;
+  return fmtLong(date);
+}
+
+export function PreviewDay({ date, sessions, onBack }: { date: string; sessions: Session[]; onBack: () => void }) {
+  const day = dayForDate(date);
+  const back = (
+    <button className="secondary" style={{ width: "100%" }} onClick={onBack}>
+      ← Tilbage til i dag
+    </button>
+  );
+
+  if (!day) {
+    // Søndag: hviledag
+    let next = addDays(date, 1);
+    while (!dayForDate(next)) next = addDays(next, 1);
+    const nextDay = dayForDate(next)!;
+    return (
+      <>
+        <div className="tr-hero" style={{ "--c": "#8a877f" } as CSSProperties}>
+          <div className="tr-hero-date">{relDay(date)}</div>
+          <div className="tr-hero-title">Hviledag 😴</div>
+          <div className="tr-hero-meta">Ingen træning. Musklerne vokser, mens de hviler.</div>
+          <div className="tr-hero-note">
+            Gå gerne en tur, og lav evt. rygopvarmningen, hvis ryggen er stiv. Næste pas er {fmtLong(next)}: <b>{nextDay.name}</b>.
+          </div>
+        </div>
+        {back}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="tr-hero" style={{ "--c": day.color } as CSSProperties}>
+        <div className="tr-hero-date">{relDay(date)}</div>
+        <div className="tr-hero-title">{day.name}</div>
+        <div className="tr-hero-meta">
+          {day.exercises.length === 1 ? "1 øvelse" : `${day.exercises.length} øvelser`} · {day.minutes}
+        </div>
+        <div className="tr-hero-note">Det her er et kig frem. Du kan logge passet, når dagen kommer.</div>
+      </div>
+
+      {day.warmup && (
+        <div className="card tr-warmup">
+          <div className="tr-ex-head">
+            <span className="tr-num" style={{ background: "#b7791f" }}>
+              ★
+            </span>
+            <div>
+              <div className="tr-ex-name">Først: opvarmning af ryggen</div>
+              <span className="tr-chip">{RYG_OPVARMNING.map((w) => w.name).join(" · ")}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {day.exercises.map((ex, idx) => {
+        const last = lastLog(sessions, ex.id, date);
+        const tip = suggest(ex, last?.log ?? null);
+        return (
+          <div key={ex.id} className="card tr-ex">
+            <div className="tr-ex-head">
+              <span className="tr-num" style={{ background: day.color }}>
+                {idx + 1}
+              </span>
+              <div>
+                <div className="tr-ex-name">{ex.name}</div>
+                <span className="tr-chip">{ex.muscles}</span>
+              </div>
+            </div>
+            <p className="tr-ex-how">{ex.how}</p>
+            {ex.aka && (
+              <a className="tr-video" href={videoUrl(ex.aka)} target="_blank" rel="noreferrer">
+                ▶ Se hvordan
+              </a>
+            )}
+            <div className="tr-goal">
+              <div>
+                <span className="tr-goal-label">Mål</span>
+                {ex.unit === "runder"
+                  ? `${ex.target[0]}–${ex.target[1]} runder`
+                  : `${ex.sets} sæt à ${ex.target[0]}–${ex.target[1]} ${ex.unit === "sek" ? "sekunder" : "gange"}`}
+              </div>
+              {last && (
+                <div>
+                  <span className="tr-goal-label">Sidst</span>
+                  {fmtSets(ex, last.log.sets)} <span className="small">({fmtDate(last.date)})</span>
+                </div>
+              )}
+              <div className="tr-goal-hint">👉 {tip.hint}</div>
+            </div>
+            {ex.tip && <p className="tr-tip">💡 {ex.tip}</p>}
+          </div>
+        );
+      })}
+      {back}
     </>
   );
 }
