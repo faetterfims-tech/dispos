@@ -452,8 +452,9 @@ button.danger {
   font-weight: 500;
 }
 
-.tr-weekday:disabled {
-  opacity: 0.45;
+.tr-weekday.future .tr-dot {
+  border-style: dashed;
+  color: var(--text-2);
 }
 
 .tr-weekday-label {
