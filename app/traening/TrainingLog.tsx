@@ -381,7 +381,8 @@ export function TrainTab({
   const warm = draft.warmup ?? RYG_OPVARMNING.map(() => false);
   /** En kommende dag, man kigger på. Rører ikke dagens igangværende træning. */
   const [preview, setPreview] = useState<string | null>(null);
-  const [timerOpen, setTimerOpen] = useState(false);
+  /** Åben timer: "all" = hele opvarmningen, tal = én øvelse. */
+  const [timer, setTimer] = useState<"all" | number | null>(null);
 
   const pickDate = (date: string) => {
     if (date > today()) {
@@ -466,17 +467,18 @@ export function TrainTab({
               <span className="tr-chip">ca. 7 min · styrker lænden</span>
             </div>
           </div>
-          <button className="tr-timer-start" onClick={() => setTimerOpen(true)}>
-            ▶ Start opvarmning med timer
+          <button className="tr-timer-start" onClick={() => setTimer("all")}>
+            ▶ Start hele opvarmningen med timer
           </button>
-          {timerOpen && (
+          {timer !== null && (
             <WarmupTimer
+              only={timer === "all" ? undefined : timer}
               onItemDone={(item) => {
                 const next = [...warm];
                 next[item] = true;
                 onChange({ ...draft, warmup: next });
               }}
-              onClose={() => setTimerOpen(false)}
+              onClose={() => setTimer(null)}
             />
           )}
           {RYG_OPVARMNING.map((w, i) => (
@@ -493,9 +495,21 @@ export function TrainTab({
               <span>
                 <b>{w.name}</b> · {w.dose}
                 <span className="small">{w.how}</span>
-                <a className="tr-video" href={videoUrl(w.aka)} target="_blank" rel="noreferrer">
-                  ▶ Se hvordan
-                </a>
+                <span className="tr-warm-actions">
+                  <button
+                    className="tr-warm-timer"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setTimer(i);
+                    }}
+                  >
+                    ⏱ Timer
+                  </button>
+                  <a className="tr-video" href={videoUrl(w.aka)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
+                    ▶ Se hvordan
+                  </a>
+                </span>
               </span>
             </label>
           ))}

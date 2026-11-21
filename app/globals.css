@@ -977,3 +977,25 @@ button.danger {
   background: rgb(255 255 255 / 0.18);
   color: #fff;
 }
+
+.tr-warm-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.45rem;
+}
+
+.tr-warm-actions .tr-video {
+  margin-top: 0;
+}
+
+.tr-warm-timer {
+  min-height: 38px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  background: #b7791f;
+  border-color: #b7791f;
+  color: #fff;
+  border-radius: 10px;
+}

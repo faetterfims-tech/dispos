@@ -59,10 +59,13 @@ export const WARMUP_PLANS: WarmupPlan[] = [
 /** Tid i sekunder, man har til at komme på plads før en ny øvelse. */
 export const GET_READY_SEC = 10;
 
-export function buildSteps(plans: WarmupPlan[] = WARMUP_PLANS): TimerStep[] {
+/** Alle trin, eller kun én øvelses trin (`only` = indeks). */
+export function buildSteps(plans: WarmupPlan[] = WARMUP_PLANS, only?: number): TimerStep[] {
   const steps: TimerStep[] = [];
   plans.forEach((p, item) => {
-    steps.push({ item, kind: "klar", title: `Gør klar: ${p.name}`, sub: `Øvelse ${item + 1} af ${plans.length}`, seconds: GET_READY_SEC });
+    if (only !== undefined && item !== only) return;
+    const sub = only === undefined ? `Øvelse ${item + 1} af ${plans.length}` : p.name;
+    steps.push({ item, kind: "klar", title: `Gør klar: ${p.name}`, sub, seconds: GET_READY_SEC });
     for (let h = 0; h < p.holds; h++) {
       const title = p.sides ? p.sides[h % 2] : (p.holdLabel ?? "Hold");
       steps.push({ item, kind: "hold", title, sub: `${p.name} · hold ${h + 1} af ${p.holds}`, seconds: p.holdSec });

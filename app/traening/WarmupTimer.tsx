@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
-import { buildSteps, totalSeconds, type StepKind } from "@/lib/traening/warmup";
+import { WARMUP_PLANS, buildSteps, totalSeconds, type StepKind } from "@/lib/traening/warmup";
 
 const COLORS: Record<StepKind, string> = { hold: "#b7791f", skift: "#5b5953", klar: "#2a6fd6" };
 
@@ -11,8 +11,9 @@ const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart
  * Guidet nedtælling til rygopvarmningen. Fuld skærm, bip ved skift og de
  * sidste 3 sekunder, og skærmen holdes tændt, mens den kører.
  */
-export default function WarmupTimer({ onItemDone, onClose }: { onItemDone: (item: number) => void; onClose: () => void }) {
-  const steps = useMemo(() => buildSteps(), []);
+export default function WarmupTimer({ only, onItemDone, onClose }: { only?: number; onItemDone: (item: number) => void; onClose: () => void }) {
+  const steps = useMemo(() => buildSteps(undefined, only), [only]);
+  const heading = only === undefined ? "Opvarmning af ryggen" : WARMUP_PLANS[only].name;
   const [idx, setIdx] = useState(0);
   const [remaining, setRemaining] = useState(steps[0].seconds);
   const [paused, setPaused] = useState(false);
@@ -134,12 +135,12 @@ export default function WarmupTimer({ onItemDone, onClose }: { onItemDone: (item
           <div className="tr-timer-big" style={{ fontSize: "5rem" }}>
             💪
           </div>
-          <div className="tr-timer-title">Opvarmningen er færdig</div>
-          <div className="tr-timer-sub">Nu er ryggen klar. Gå videre til første øvelse.</div>
+          <div className="tr-timer-title">{only === undefined ? "Opvarmningen er færdig" : `${heading} er færdig`}</div>
+          <div className="tr-timer-sub">{only === undefined ? "Nu er ryggen klar. Gå videre til første øvelse." : "Godt klaret. Tag den næste, når du er klar."}</div>
         </div>
         <div className="tr-timer-buttons">
           <button className="tr-timer-main" onClick={onClose}>
-            Videre til øvelserne
+            {only === undefined ? "Videre til øvelserne" : "Tilbage"}
           </button>
         </div>
       </div>
@@ -149,7 +150,9 @@ export default function WarmupTimer({ onItemDone, onClose }: { onItemDone: (item
   return (
     <div className="tr-timer" style={{ "--c": COLORS[step.kind] } as CSSProperties} role="dialog" aria-label="Opvarmnings-timer">
       <div className="tr-timer-top">
-        <span>Opvarmning af ryggen · {fmtClock(left)} tilbage</span>
+        <span>
+          {heading} · {fmtClock(left)} tilbage
+        </span>
         <button className="tr-timer-x" onClick={onClose} aria-label="Stop timeren">
           ✕
         </button>
