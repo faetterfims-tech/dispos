@@ -31,3 +31,11 @@ test("trin: klar, hold og skift i rigtig rækkefølge", () => {
   const t = totalSeconds(steps);
   assert.ok(t > 6 * 60 && t < 10 * 60, `tid ${t}`);
 });
+
+test("timer for én øvelse", () => {
+  const steps = buildSteps(undefined, 1);
+  assert.ok(steps.length > 0);
+  assert.ok(steps.every((s) => s.item === 1));
+  assert.equal(steps[0].kind, "klar");
+  assert.equal(steps.filter((s) => s.kind === "hold").length, WARMUP_PLANS[1].holds);
+});
