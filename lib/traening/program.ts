@@ -73,7 +73,7 @@ const ex = (e: Exercise) => e;
 const E = {
   armstraek: ex({
     id: "armstraek",
-    name: "Armstrækninger",
+    name: "Armbøjninger",
     muscles: "Bryst, skuldre og arme",
     how: "Hænderne i gulvet, kroppen lige som en planke. Sænk brystet næsten ned, og pres dig op igen.",
     aka: "push up",
