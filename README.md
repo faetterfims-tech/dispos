@@ -26,7 +26,7 @@ Husforbrug pr. time = købt + sol + afladet − solgt − opladet.
 
 Træningslog til hjemmeprogrammet (4 styrkepas + 2 intervalpas om ugen).
 
-- **Træn**: ugens dage øverst, dagens pas med farve og fremskridt. Rygopvarmning før styrkepas. Hver øvelse har et almindeligt dansk navn, en kort forklaring og et link til en video. Tallene er udfyldt ud fra sidste gang, og man trykker ✓ ved hvert sæt, man har lavet. Kun sæt med ✓ bliver gemt.
+- **Træn**: ugens dage øverst, dagens pas med farve og fremskridt. Rygopvarmning før styrkepas med en guidet timer (fuld skærm, nedtælling, bip ved skift, holder skærmen tændt). Hver øvelse har et almindeligt dansk navn, en kort forklaring og et link til en video. Tallene er udfyldt ud fra sidste gang, og man trykker ✓ ved hvert sæt, man har lavet. Kun sæt med ✓ bliver gemt.
 - **Fremgang**: træninger pr. uge, vægt og mål om maven siden start, og styrke pr. øvelse over tid.
 - **Vægt**: vægt og mål om maven med grafer.
 - **Tidligere**: alle træninger med mulighed for at slette.

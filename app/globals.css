@@ -843,3 +843,137 @@ button.danger {
   color: var(--text-3);
   font-weight: 500;
 }
+
+/* Opvarmnings-timer */
+.tr-timer-start {
+  width: 100%;
+  margin-top: 0.9rem;
+  min-height: 52px;
+  font-size: 1.05rem;
+  background: #b7791f;
+  border-color: #b7791f;
+  color: #fff;
+  border-radius: 14px;
+}
+
+.tr-timer {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: var(--c);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  padding: calc(1rem + env(safe-area-inset-top)) 1.2rem calc(1.2rem + env(safe-area-inset-bottom));
+  transition: background 0.4s;
+}
+
+.tr-timer-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.tr-timer-x {
+  background: rgb(255 255 255 / 0.18);
+  color: #fff;
+  border: 0;
+  width: 44px;
+  height: 44px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1.1rem;
+}
+
+.tr-timer-total {
+  height: 6px;
+  border-radius: 99px;
+  background: rgb(255 255 255 / 0.25);
+  margin-top: 0.8rem;
+  overflow: hidden;
+}
+
+.tr-timer-total div {
+  height: 100%;
+  background: #fff;
+  transition: width 0.3s linear;
+}
+
+.tr-timer-mid {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.4rem;
+}
+
+.tr-timer-big {
+  font-size: min(42vw, 13rem);
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+
+.tr-timer-title {
+  font-size: 1.7rem;
+  font-weight: 800;
+  line-height: 1.2;
+  max-width: 22ch;
+}
+
+.tr-timer-sub {
+  font-size: 1rem;
+  opacity: 0.85;
+}
+
+.tr-timer-paused {
+  margin-top: 0.5rem;
+  background: rgb(0 0 0 / 0.25);
+  padding: 0.3rem 0.9rem;
+  border-radius: 99px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+}
+
+.tr-timer-next {
+  text-align: center;
+  font-size: 1rem;
+  opacity: 0.9;
+  margin-bottom: 1rem;
+}
+
+.tr-timer-buttons {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 0.6rem;
+}
+
+.tr-timer-buttons button {
+  min-height: 60px;
+  border-radius: 16px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  border: 0;
+}
+
+.tr-timer-main {
+  background: #fff;
+  color: #171614;
+}
+
+.tr-timer-buttons .tr-timer-main:only-child {
+  grid-column: 1 / -1;
+}
+
+.tr-timer-skip {
+  background: rgb(255 255 255 / 0.18);
+  color: #fff;
+}
