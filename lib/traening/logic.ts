@@ -8,6 +8,20 @@ export interface SetEntry {
   kg: number;
   /** Gentagelser, sekunder eller runder afhængigt af øvelsen. */
   reps: number;
+  /** Hvor længe sættet tog (fra ▶ til ✓), i sekunder. */
+  sec?: number;
+}
+
+/** Tid brugt på et pas (gemmes, når man har brugt Start-knappen). */
+export interface SessionTime {
+  /** ISO */
+  startedAt: string;
+  /** ISO */
+  endedAt: string;
+  totalSec: number;
+  activeSec: number;
+  restSec: number;
+  idleSec: number;
 }
 
 export interface ExerciseLog {
@@ -23,6 +37,7 @@ export interface Session {
   exercises: ExerciseLog[];
   note?: string;
   savedAt?: string;
+  time?: SessionTime;
 }
 
 export interface BodyEntry {
@@ -59,14 +74,34 @@ export function sanitizeSession(input: unknown): Session | null {
       const kg = num((set as SetEntry)?.kg ?? 0, 500);
       const reps = num((set as SetEntry)?.reps, 3600);
       if (kg === null || reps === null || reps === 0) continue;
-      clean.push({ kg, reps });
+      const sec = num((set as SetEntry)?.sec, 24 * 3600);
+      clean.push(sec ? { kg, reps, sec: Math.round(sec) } : { kg, reps });
     }
     if (clean.length) exercises.push({ id, sets: clean });
   }
   if (!exercises.length) return null;
 
   const note = typeof s.note === "string" && s.note.trim() ? s.note.trim().slice(0, 500) : undefined;
-  return { id: s.id, date: s.date, dayId: s.dayId, exercises, ...(note ? { note } : {}) };
+  const time = sanitizeTime(s.time);
+  return { id: s.id, date: s.date, dayId: s.dayId, exercises, ...(note ? { note } : {}), ...(time ? { time } : {}) };
+}
+
+function sanitizeTime(input: unknown): SessionTime | null {
+  if (!input || typeof input !== "object") return null;
+  const t = input as Record<string, unknown>;
+  const iso = (v: unknown) => typeof v === "string" && !Number.isNaN(Date.parse(v)) && v.length <= 40;
+  if (!iso(t.startedAt) || !iso(t.endedAt)) return null;
+  const n = (v: unknown) => num(v, 24 * 3600);
+  const [totalSec, activeSec, restSec, idleSec] = [n(t.totalSec), n(t.activeSec), n(t.restSec), n(t.idleSec)];
+  if (totalSec === null || activeSec === null || restSec === null || idleSec === null) return null;
+  return {
+    startedAt: t.startedAt as string,
+    endedAt: t.endedAt as string,
+    totalSec: Math.round(totalSec),
+    activeSec: Math.round(activeSec),
+    restSec: Math.round(restSec),
+    idleSec: Math.round(idleSec),
+  };
 }
 
 export function sanitizeBody(input: unknown): BodyEntry | null {

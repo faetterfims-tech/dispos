@@ -19,18 +19,32 @@ import {
 } from "@/lib/traening/logic";
 import LineChart from "./LineChart";
 import WarmupTimer from "./WarmupTimer";
+import { fmtDuration, fmtMinutes, splitTime, type Interval } from "@/lib/traening/timing";
 
 type Tab = "traen" | "fremgang" | "krop" | "historik";
 interface SetDraft {
   kg: string;
   reps: string;
   done?: boolean;
+  /** ms — sættet er i gang (▶ trykket, ✓ ikke endnu). */
+  startedAt?: number;
+  /** Sættets varighed i sekunder. */
+  sec?: number;
+}
+interface WorkoutInterval extends Interval {
+  kind: "set" | "opvarmning";
+}
+/** Uret for dagens træning. */
+interface Workout {
+  startedAt: number;
+  intervals: WorkoutInterval[];
 }
 interface Draft {
   date: string;
   dayId: string;
   sets: Record<string, SetDraft[]>;
   warmup?: boolean[];
+  workout?: Workout;
   note: string;
 }
 interface Data {
@@ -59,7 +73,11 @@ function save(key: string, value: unknown) {
   }
 }
 
-const today = () => new Date().toLocaleDateString("sv-SE");
+/** Lokal dato som ÅÅÅÅ-MM-DD (uden at være afhængig af browserens sprogdata). */
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 const fmtDate = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("da-DK", { weekday: "short", day: "numeric", month: "short" });
 const fmtLong = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("da-DK", { weekday: "long", day: "numeric", month: "long" });
 const toNum = (s: string) => Number(s.replace(",", "."));
@@ -169,18 +187,25 @@ export default function TrainingLog() {
       date: draft.date,
       dayId: draft.dayId,
       note: draft.note.trim() || undefined,
+      time: draft.workout
+        ? (() => {
+            const now = Date.now();
+            const split = splitTime(draft.workout.startedAt, draft.workout.intervals, now);
+            return { startedAt: new Date(draft.workout.startedAt).toISOString(), endedAt: new Date(now).toISOString(), ...split };
+          })()
+        : undefined,
       exercises: day.exercises
         .map((ex) => ({
           id: ex.id,
           sets: (draft.sets[ex.id] ?? [])
             .filter((s) => s.done)
-            .map((s) => ({ kg: s.kg ? toNum(s.kg) : 0, reps: toNum(s.reps) }))
+            .map((s) => ({ kg: s.kg ? toNum(s.kg) : 0, reps: toNum(s.reps), ...(s.sec ? { sec: s.sec } : {}) }))
             .filter((s) => Number.isFinite(s.kg) && Number.isFinite(s.reps) && s.reps > 0),
         }))
         .filter((e) => e.sets.length),
     };
     if (!session.exercises.length) {
-      setError("Sæt ✓ ved de sæt, du har lavet, før du gemmer.");
+      setError("Skriv antal ved de sæt, du har lavet (og tryk ✓), før du gemmer.");
       return;
     }
     setSaving(true);
@@ -299,6 +324,7 @@ export default function TrainingLog() {
           sessions={data.sessions}
           saving={saving}
           onChange={setDraft}
+          update={(fn) => setDraft((d) => (d ? fn(d) : d))}
           onPick={(date, dayId) => setDraft(buildDraft(date, dayId, data.sessions))}
           onSave={saveSession}
           onSkip={skipPass}
@@ -364,11 +390,14 @@ export function TrainTab({
   onSave,
   onSkip,
   upNextId,
+  update,
 }: {
   draft: Draft;
   sessions: Session[];
   saving: boolean;
   onChange: (d: Draft) => void;
+  /** Ændring ud fra den nyeste kladde (sikkert ved flere ændringer lige efter hinanden). */
+  update: (fn: (d: Draft) => Draft) => void;
   onPick: (date: string, dayId: string) => void;
   onSave: () => void;
   onSkip: () => void;
@@ -383,6 +412,67 @@ export function TrainTab({
   const [preview, setPreview] = useState<string | null>(null);
   /** Åben timer: "all" = hele opvarmningen, tal = én øvelse. */
   const [timer, setTimer] = useState<"all" | number | null>(null);
+
+  const isToday = draft.date === today();
+  const workout = draft.workout;
+  /** I dag: felterne er låst, til man trykker Start. Efterregistrering er altid åben. */
+  const locked = isToday && !workout;
+
+  // Uret tikker hvert sekund, mens træningen kører.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!workout) return;
+    const t = setInterval(() => setTick((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, [workout]);
+  const split = workout ? splitTime(workout.startedAt, workout.intervals, Date.now()) : null;
+  const anyRunning = Object.values(draft.sets).some((rows) => rows.some((r) => r.startedAt && !r.done));
+
+  const startWorkout = () => update((d) => (d.workout ? d : { ...d, workout: { startedAt: Date.now(), intervals: [] } }));
+  const cancelWorkout = () =>
+    update((d) => {
+      const rest: Draft = { ...d };
+      delete rest.workout;
+      const sets: Record<string, SetDraft[]> = {};
+      for (const [k, rows] of Object.entries(d.sets)) sets[k] = rows.map((r) => ({ ...r, startedAt: undefined }));
+      return { ...rest, sets };
+    });
+
+  /** Luk igangværende sæt (markér som lavet) og deres tidsperioder. */
+  const closeRunning = (d: Draft, now: number): Draft => {
+    const sets: Record<string, SetDraft[]> = {};
+    for (const [k, rows] of Object.entries(d.sets))
+      sets[k] = rows.map((r) => (r.startedAt && !r.done ? { ...r, done: true, startedAt: undefined, sec: Math.round((now - r.startedAt) / 1000) } : r));
+    const intervals = (d.workout?.intervals ?? []).map((iv) => (iv.kind === "set" && iv.end === undefined ? { ...iv, end: now } : iv));
+    return { ...d, sets, workout: d.workout ? { ...d.workout, intervals } : d.workout };
+  };
+
+  const startSet = (exId: string, i: number) =>
+    update((d) => {
+      const now = Date.now();
+      const base = d.workout ? d : { ...d, workout: { startedAt: now, intervals: [] } };
+      const c = closeRunning(base, now);
+      const rows = [...(c.sets[exId] ?? [])];
+      rows[i] = { ...rows[i], startedAt: now, done: false, sec: undefined };
+      return { ...c, sets: { ...c.sets, [exId]: rows }, workout: { ...c.workout!, intervals: [...c.workout!.intervals, { start: now, kind: "set" }] } };
+    });
+  const finishSet = () => update((d) => closeRunning(d, Date.now()));
+  const undoSet = (exId: string, i: number) =>
+    update((d) => {
+      const rows = [...(d.sets[exId] ?? [])];
+      rows[i] = { ...rows[i], done: false, sec: undefined, startedAt: undefined };
+      return { ...d, sets: { ...d.sets, [exId]: rows } };
+    });
+
+  const warmupRunning = (running: boolean) =>
+    update((d) => {
+      const now = Date.now();
+      const w = d.workout ?? { startedAt: now, intervals: [] };
+      const intervals = running
+        ? [...w.intervals.map((iv) => (iv.end === undefined ? { ...iv, end: now } : iv)), { start: now, kind: "opvarmning" as const }]
+        : w.intervals.map((iv) => (iv.kind === "opvarmning" && iv.end === undefined ? { ...iv, end: now } : iv));
+      return { ...(running ? closeRunning(d, now) : d), workout: { ...w, intervals } };
+    });
 
   const pickDate = (date: string) => {
     if (date > today()) {
@@ -423,7 +513,7 @@ export function TrainTab({
       <WeekStrip sessions={sessions} selected={draft.date} upNextId={upNextId} onPick={pickDate} />
 
       <div className="tr-hero" style={{ "--c": day.color } as CSSProperties}>
-        <div className="tr-hero-date">{draft.date === today() ? "Dit næste pas" : `Efterregistrering · ${fmtLong(draft.date)}`}</div>
+        <div className="tr-hero-date">{isToday ? (workout ? "I gang" : "Dit næste pas") : `Efterregistrering · ${fmtLong(draft.date)}`}</div>
         <div className="tr-hero-title">{day.name}</div>
         <div className="tr-hero-meta">
           {day.exercises.length === 1 ? "1 øvelse" : `${day.exercises.length} øvelser`} · {day.minutes}
@@ -434,7 +524,22 @@ export function TrainTab({
         <div className="tr-hero-meta">
           {doneSets} af {total} sæt lavet
         </div>
-        {doneSets === 0 && draft.date === today() && nextDay && (
+        {locked && (
+          <button className="tr-start" onClick={startWorkout}>
+            ▶ Start dagens træning
+          </button>
+        )}
+        {workout && split && (
+          <div className="tr-clock">
+            <div className="tr-clock-big">⏱ {fmtDuration(split.totalSec)}</div>
+            {doneSets === 0 && (
+              <button className="tr-link tr-link-light" onClick={cancelWorkout}>
+                Fortryd start
+              </button>
+            )}
+          </div>
+        )}
+        {doneSets === 0 && !workout && isToday && nextDay && (
           <button className="tr-skip" onClick={onSkip}>
             Spring over → {nextDay.name}
           </button>
@@ -451,8 +556,9 @@ export function TrainTab({
       <div className="tr-how card">
         <strong>Sådan gør du</strong>
         <span className="small">
-          Du træner, når det passer dig. Holder du fri en dag, venter det samme pas til næste gang. Tallene er udfyldt ud fra sidste gang. Lav
-          sættet, ret tallene, hvis det gik anderledes, og tryk på <b>✓</b>. Hold 1–1½ min pause mellem sættene.
+          Tryk <b>Start dagens træning</b>, så starter uret. Tryk <b>▶</b>, når du går i gang med et sæt, og <b>✓</b>, når det er færdigt. Ret
+          tallene, hvis det gik anderledes end foreslået. Hold 1–1½ min pause mellem sættene. Holder du fri en dag, venter det samme pas til
+          næste gang.
         </span>
       </div>
 
@@ -467,7 +573,13 @@ export function TrainTab({
               <span className="tr-chip">ca. 7 min · styrker lænden</span>
             </div>
           </div>
-          <button className="tr-timer-start" onClick={() => setTimer("all")}>
+          <button
+            className="tr-timer-start"
+            onClick={() => {
+              if (isToday) startWorkout();
+              setTimer("all");
+            }}
+          >
             ▶ Start hele opvarmningen med timer
           </button>
           {timer !== null && (
@@ -478,6 +590,9 @@ export function TrainTab({
                 next[item] = true;
                 onChange({ ...draft, warmup: next });
               }}
+              onRunningChange={(running) => {
+                if (isToday) warmupRunning(running);
+              }}
               onClose={() => setTimer(null)}
             />
           )}
@@ -485,6 +600,7 @@ export function TrainTab({
             <label key={w.name} className={`tr-check${warm[i] ? " done" : ""}`}>
               <input
                 type="checkbox"
+                disabled={locked}
                 checked={warm[i] ?? false}
                 onChange={(e) => {
                   const next = [...warm];
@@ -501,6 +617,7 @@ export function TrainTab({
                     onClick={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
+                      if (isToday) startWorkout();
                       setTimer(i);
                     }}
                   >
@@ -557,12 +674,12 @@ export function TrainTab({
               <div className="tr-goal-hint">👉 {tip.hint}</div>
             </div>
 
-            <div className="tr-sets">
+            <div className={`tr-sets${locked ? " locked" : ""}`}>
               <div className={`tr-set-row tr-set-head${showKg ? "" : " no-kg"}`}>
                 <span>Sæt</span>
                 {showKg && <span>kg</span>}
                 <span>{COUNT_LABEL[ex.unit]}</span>
-                <span>Lavet</span>
+                <span>{isToday ? "▶ / ✓" : "Lavet"}</span>
               </div>
               {rows.map((r, i) => (
                 <div key={i} className={`tr-set-row${showKg ? "" : " no-kg"}${r.done ? " done" : ""}`}>
@@ -572,6 +689,7 @@ export function TrainTab({
                       inputMode="decimal"
                       placeholder="kg"
                       value={r.kg}
+                      disabled={locked}
                       onFocus={(e) => e.target.select()}
                       onChange={(e) => setRow(ex.id, i, { kg: e.target.value })}
                       aria-label={`Sæt ${i + 1}, kg`}
@@ -581,26 +699,41 @@ export function TrainTab({
                     inputMode="numeric"
                     placeholder="0"
                     value={r.reps}
+                    disabled={locked}
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setRow(ex.id, i, { reps: e.target.value })}
                     aria-label={`Sæt ${i + 1}, ${COUNT_LABEL[ex.unit]}`}
                   />
-                  <button
-                    className={`tr-done${r.done ? " on" : ""}`}
-                    onClick={() => setRow(ex.id, i, { done: !r.done })}
-                    aria-pressed={!!r.done}
-                    aria-label={`Sæt ${i + 1} lavet`}
-                  >
-                    ✓
-                  </button>
+                  {!isToday ? (
+                    <button
+                      className={`tr-done${r.done ? " on" : ""}`}
+                      onClick={() => setRow(ex.id, i, { done: !r.done })}
+                      aria-pressed={!!r.done}
+                      aria-label={`Sæt ${i + 1} lavet`}
+                    >
+                      ✓
+                    </button>
+                  ) : r.done ? (
+                    <button className="tr-done on" onClick={() => undoSet(ex.id, i)} aria-label={`Sæt ${i + 1} lavet. Tryk for at fortryde`}>
+                      ✓{r.sec ? <span className="tr-done-sec">{fmtDuration(r.sec)}</span> : null}
+                    </button>
+                  ) : r.startedAt ? (
+                    <button className="tr-done running" onClick={finishSet} aria-label={`Sæt ${i + 1} i gang. Tryk når det er færdigt`}>
+                      <span className="tr-done-sec">{fmtDuration(Math.max(0, Math.round((Date.now() - r.startedAt) / 1000)))}</span>✓
+                    </button>
+                  ) : (
+                    <button className="tr-done" disabled={locked} onClick={() => startSet(ex.id, i)} aria-label={`Start sæt ${i + 1}`}>
+                      ▶
+                    </button>
+                  )}
                 </div>
               ))}
               <div className="tr-set-actions">
-                <button className="secondary small-btn" onClick={() => addRow(ex.id)}>
+                <button className="secondary small-btn" disabled={locked} onClick={() => addRow(ex.id)}>
                   + Ekstra sæt
                 </button>
                 {rows.length > 1 && (
-                  <button className="tr-link" onClick={() => removeRow(ex.id)}>
+                  <button className="tr-link" disabled={locked} onClick={() => removeRow(ex.id)}>
                     Fjern sidste sæt
                   </button>
                 )}
@@ -620,9 +753,23 @@ export function TrainTab({
       </div>
 
       <div className="tr-savebar">
-        <button className="save-btn" onClick={onSave} disabled={saving || doneSets === 0}>
-          {saving ? "Gemmer…" : doneSets === 0 ? "Tryk ✓ ved dine sæt for at gemme" : `Gem træningen (${doneSets} sæt)`}
-        </button>
+        {split && (
+          <div className="tr-split" aria-label="Tidsforbrug">
+            <span className="tr-split-total">⏱ {fmtDuration(split.totalSec)}</span>
+            <span className="tr-split-a">Aktiv {fmtDuration(split.activeSec)}</span>
+            <span className="tr-split-r">Pause {fmtDuration(split.restSec)}</span>
+            <span className="tr-split-i">Spild {fmtDuration(split.idleSec)}</span>
+          </div>
+        )}
+        {locked ? (
+          <button className="save-btn" onClick={startWorkout}>
+            ▶ Start dagens træning
+          </button>
+        ) : (
+          <button className="save-btn" onClick={onSave} disabled={saving || doneSets === 0}>
+            {saving ? "Gemmer…" : doneSets === 0 ? (isToday ? (anyRunning ? "Tryk ✓ ved sættet, når det er færdigt" : "Tryk ▶ for at starte dit første sæt") : "Tryk ✓ ved dine sæt for at gemme") : `Gem træningen (${doneSets} sæt)`}
+          </button>
+        )}
       </div>
     </>
   );
@@ -904,6 +1051,14 @@ export function HistoryTab({ sessions, onDelete }: { sessions: Session[]; onDele
                 </li>
               ))}
             </ul>
+            {s.time && (
+              <div className="tr-hist-time">
+                <span>⏱ {fmtMinutes(s.time.totalSec)} i alt</span>
+                <span className="tr-split-a">Aktiv {fmtMinutes(s.time.activeSec)}</span>
+                <span className="tr-split-r">Pause {fmtMinutes(s.time.restSec)}</span>
+                <span className="tr-split-i">Spild {fmtMinutes(s.time.idleSec)}</span>
+              </div>
+            )}
             {s.note && <p className="small">📝 {s.note}</p>}
             <ConfirmDelete label="Slet træning" onConfirm={() => onDelete(s.id)} />
           </details>
