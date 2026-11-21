@@ -17,6 +17,8 @@ export default function WarmupTimer({ only, onItemDone, onClose }: { only?: numb
   const [idx, setIdx] = useState(0);
   const [remaining, setRemaining] = useState(steps[0].seconds);
   const [paused, setPaused] = useState(false);
+  /** Timeren venter, til man trykker Start. */
+  const [started, setStarted] = useState(false);
   const [done, setDone] = useState(false);
 
   const endAt = useRef(Date.now() + steps[0].seconds * 1000);
@@ -45,19 +47,24 @@ export default function WarmupTimer({ only, onItemDone, onClose }: { only?: numb
     }
   }, []);
 
-  // Lyd skal startes fra et tryk (iOS). Komponenten åbnes af et tryk, så det sker her.
-  useEffect(() => {
+  useEffect(() => () => {
+    audio.current?.close().catch(() => {});
+  }, []);
+
+  /** Start: lyd skal startes fra et tryk (iOS), og nedtællingen begynder først nu. */
+  const start = () => {
     try {
       const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (Ctx) audio.current = new Ctx();
+      if (Ctx && !audio.current) audio.current = new Ctx();
+      audio.current?.resume().catch(() => {});
     } catch {
       audio.current = null;
     }
+    endAt.current = Date.now() + steps[0].seconds * 1000;
+    setRemaining(steps[0].seconds);
+    setStarted(true);
     beep(880, 250);
-    return () => {
-      audio.current?.close().catch(() => {});
-    };
-  }, [beep]);
+  };
 
   // Hold skærmen tændt
   useEffect(() => {
@@ -102,7 +109,7 @@ export default function WarmupTimer({ only, onItemDone, onClose }: { only?: numb
 
   // Nedtælling ud fra uret, så den ikke glider
   useEffect(() => {
-    if (paused || done) return;
+    if (!started || paused || done) return;
     const t = setInterval(() => {
       const left = Math.max(0, Math.ceil((endAt.current - Date.now()) / 1000));
       setRemaining(left);
@@ -113,7 +120,7 @@ export default function WarmupTimer({ only, onItemDone, onClose }: { only?: numb
       if (left === 0) goTo(idx + 1);
     }, 200);
     return () => clearInterval(t);
-  }, [paused, done, idx, goTo, beep]);
+  }, [started, paused, done, idx, goTo, beep]);
 
   const togglePause = () => {
     if (paused) {
@@ -127,6 +134,32 @@ export default function WarmupTimer({ only, onItemDone, onClose }: { only?: numb
   const next = steps[idx + 1];
   const left = remaining + steps.slice(idx + 1).reduce((s, x) => s + x.seconds, 0);
   const total = totalSeconds(steps);
+
+  if (!started) {
+    return (
+      <div className="tr-timer" style={{ "--c": COLORS.klar } as CSSProperties} role="dialog" aria-label="Opvarmnings-timer">
+        <div className="tr-timer-top">
+          <span>{heading}</span>
+          <button className="tr-timer-x" onClick={onClose} aria-label="Luk">
+            ✕
+          </button>
+        </div>
+        <div className="tr-timer-mid">
+          <div className="tr-timer-sub">{only === undefined ? "Første øvelse" : "Klar?"}</div>
+          <div className="tr-timer-title">{WARMUP_PLANS[step.item].name}</div>
+          <div className="tr-timer-sub" style={{ maxWidth: "30ch" }}>
+            Læg telefonen, så du kan se den. Når du trykker Start, får du {steps[0].seconds} sekunder til at komme i position.
+          </div>
+          <div className="tr-timer-sub">Varighed: {fmtClock(total)}</div>
+        </div>
+        <div className="tr-timer-buttons">
+          <button className="tr-timer-main" onClick={start}>
+            ▶ Start
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (done) {
     return (
