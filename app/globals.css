@@ -999,3 +999,111 @@ button.danger {
   color: #fff;
   border-radius: 10px;
 }
+
+/* Træningsur */
+.tr-start {
+  margin-top: 0.9rem;
+  width: 100%;
+  min-height: 56px;
+  font-size: 1.15rem;
+  font-weight: 800;
+  background: #fff;
+  color: #171614;
+  border: 0;
+  border-radius: 14px;
+}
+
+.tr-clock {
+  margin-top: 0.8rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.tr-clock-big {
+  font-size: 2rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+.tr-link-light {
+  color: rgb(255 255 255 / 0.85);
+}
+
+.tr-sets.locked {
+  opacity: 0.55;
+}
+
+.tr-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.tr-done:disabled {
+  opacity: 0.6;
+}
+
+.tr-done.running {
+  background: #e2662b;
+  border-color: #e2662b;
+  color: #fff;
+  animation: tr-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes tr-pulse {
+  50% {
+    box-shadow: 0 0 0 5px rgb(226 102 43 / 0.25);
+  }
+}
+
+.tr-done-sec {
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  margin: 0.1rem 0;
+}
+
+.tr-split {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.45rem 0.7rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.08);
+}
+
+.tr-split-total {
+  font-weight: 800;
+}
+
+.tr-split-a {
+  color: var(--good);
+  font-weight: 700;
+}
+
+.tr-split-r {
+  color: #2a6fd6;
+  font-weight: 600;
+}
+
+.tr-split-i {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.tr-hist-time {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.9rem;
+  font-size: 0.85rem;
+  margin: 0.2rem 0 0.6rem;
+}

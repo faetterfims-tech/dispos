@@ -11,7 +11,18 @@ const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart
  * Guidet nedtælling til rygopvarmningen. Fuld skærm, bip ved skift og de
  * sidste 3 sekunder, og skærmen holdes tændt, mens den kører.
  */
-export default function WarmupTimer({ only, onItemDone, onClose }: { only?: number; onItemDone: (item: number) => void; onClose: () => void }) {
+export default function WarmupTimer({
+  only,
+  onItemDone,
+  onClose,
+  onRunningChange,
+}: {
+  only?: number;
+  onItemDone: (item: number) => void;
+  onClose: () => void;
+  /** Kaldes med true ved Start og false, når timeren stopper (færdig, pause eller lukket). */
+  onRunningChange?: (running: boolean) => void;
+}) {
   const steps = useMemo(() => buildSteps(undefined, only), [only]);
   const heading = only === undefined ? "Opvarmning af ryggen" : WARMUP_PLANS[only].name;
   const [idx, setIdx] = useState(0);
@@ -47,9 +58,23 @@ export default function WarmupTimer({ only, onItemDone, onClose }: { only?: numb
     }
   }, []);
 
-  useEffect(() => () => {
-    audio.current?.close().catch(() => {});
+  // Giv besked, når timeren kører/står stille (bruges til aktiv tid).
+  const running = useRef(false);
+  const runningCb = useRef(onRunningChange);
+  runningCb.current = onRunningChange;
+  const setRunning = useCallback((v: boolean) => {
+    if (running.current === v) return;
+    running.current = v;
+    runningCb.current?.(v);
   }, []);
+
+  useEffect(
+    () => () => {
+      audio.current?.close().catch(() => {});
+      setRunning(false);
+    },
+    [setRunning],
+  );
 
   /** Start: lyd skal startes fra et tryk (iOS), og nedtællingen begynder først nu. */
   const start = () => {
@@ -63,6 +88,7 @@ export default function WarmupTimer({ only, onItemDone, onClose }: { only?: numb
     endAt.current = Date.now() + steps[0].seconds * 1000;
     setRemaining(steps[0].seconds);
     setStarted(true);
+    setRunning(true);
     beep(880, 250);
   };
 
@@ -94,6 +120,7 @@ export default function WarmupTimer({ only, onItemDone, onClose }: { only?: numb
         if (finished.current) return;
         finished.current = true;
         setDone(true);
+        setRunning(false);
         beep(660, 200);
         setTimeout(() => beep(880, 400), 220);
         return;
@@ -127,6 +154,7 @@ export default function WarmupTimer({ only, onItemDone, onClose }: { only?: numb
       endAt.current = Date.now() + remaining * 1000;
       audio.current?.resume().catch(() => {});
     }
+    setRunning(paused);
     setPaused(!paused);
   };
 

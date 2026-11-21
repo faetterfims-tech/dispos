@@ -115,3 +115,16 @@ test("rækkefølge: næste pas, spring over og forfra", async () => {
   // Et gammelt spring over overhales af et nyere pas.
   assert.equal(upNext(sessions, { dayId: "a", setAt: "2026-11-22T06:00:00.000Z" }, order), "c");
 });
+
+test("sanitizeSession beholder tid og sætvarighed", () => {
+  const s = sanitizeSession({
+    id: "t1",
+    date: "2026-11-21",
+    dayId: "overkrop-a",
+    exercises: [{ id: "roning", sets: [{ kg: 10, reps: 10, sec: 42.4 }, { kg: 10, reps: 9, sec: "x" }] }],
+    time: { startedAt: "2026-11-21T17:00:00.000Z", endedAt: "2026-11-21T17:45:00.000Z", totalSec: 2700, activeSec: 900, restSec: 1200, idleSec: 600 },
+  });
+  assert.deepEqual(s?.exercises[0].sets, [{ kg: 10, reps: 10, sec: 42 }, { kg: 10, reps: 9 }]);
+  assert.equal(s?.time?.activeSec, 900);
+  assert.equal(sanitizeSession({ id: "t2", date: "2026-11-21", dayId: "a", exercises: [{ id: "roning", sets: [{ kg: 1, reps: 1 }] }], time: { startedAt: "nej" } })?.time, undefined);
+});
