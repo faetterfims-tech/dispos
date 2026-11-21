@@ -18,6 +18,7 @@ import {
   type Session,
 } from "@/lib/traening/logic";
 import LineChart from "./LineChart";
+import WarmupTimer from "./WarmupTimer";
 
 type Tab = "traen" | "fremgang" | "krop" | "historik";
 interface SetDraft {
@@ -380,6 +381,7 @@ export function TrainTab({
   const warm = draft.warmup ?? RYG_OPVARMNING.map(() => false);
   /** En kommende dag, man kigger på. Rører ikke dagens igangværende træning. */
   const [preview, setPreview] = useState<string | null>(null);
+  const [timerOpen, setTimerOpen] = useState(false);
 
   const pickDate = (date: string) => {
     if (date > today()) {
@@ -461,9 +463,22 @@ export function TrainTab({
             </span>
             <div>
               <div className="tr-ex-name">Først: opvarmning af ryggen</div>
-              <span className="tr-chip">ca. 10 min · styrker lænden</span>
+              <span className="tr-chip">ca. 7 min · styrker lænden</span>
             </div>
           </div>
+          <button className="tr-timer-start" onClick={() => setTimerOpen(true)}>
+            ▶ Start opvarmning med timer
+          </button>
+          {timerOpen && (
+            <WarmupTimer
+              onItemDone={(item) => {
+                const next = [...warm];
+                next[item] = true;
+                onChange({ ...draft, warmup: next });
+              }}
+              onClose={() => setTimerOpen(false)}
+            />
+          )}
           {RYG_OPVARMNING.map((w, i) => (
             <label key={w.name} className={`tr-check${warm[i] ? " done" : ""}`}>
               <input
