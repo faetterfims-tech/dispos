@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { storeConfigured } from "@/lib/store";
-import { deleteBody, deleteSession, loadAll, saveBody, saveSession } from "@/lib/traening-store";
+import { deleteBody, deleteSession, loadAll, saveBody, saveNext, saveSession } from "@/lib/traening-store";
+import { DAYS } from "@/lib/traening/program";
 import { sanitizeBody, sanitizeSession } from "@/lib/traening/logic";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +10,7 @@ const fail = (error: string, status: number) => NextResponse.json({ ok: false, e
 
 /** GET /api/traening — alle pas og kropsmål. */
 export async function GET() {
-  if (!storeConfigured()) return NextResponse.json({ configured: false, sessions: [], body: [] });
+  if (!storeConfigured()) return NextResponse.json({ configured: false, sessions: [], body: [], next: null });
   try {
     return NextResponse.json({ configured: true, ...(await loadAll()) });
   } catch (err) {
@@ -18,10 +19,10 @@ export async function GET() {
   }
 }
 
-/** POST /api/traening — { kind: "session", session } eller { kind: "body", entry }. */
+/** POST /api/traening — { kind: "session", session } · { kind: "body", entry } · { kind: "next", dayId } (spring over). */
 export async function POST(req: NextRequest) {
   if (!storeConfigured()) return fail("Lageret er ikke koblet på.", 503);
-  let body: { kind?: string; session?: unknown; entry?: unknown };
+  let body: { kind?: string; session?: unknown; entry?: unknown; dayId?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -40,6 +41,12 @@ export async function POST(req: NextRequest) {
       if (!b) return fail("Skriv vægt og/eller livvidde.", 422);
       await saveBody(b);
       return NextResponse.json({ ok: true, entry: b });
+    }
+    if (body.kind === "next") {
+      if (typeof body.dayId !== "string" || !DAYS.some((d) => d.id === body.dayId)) return fail("Ukendt pas.", 422);
+      const next = { dayId: body.dayId, setAt: new Date().toISOString() };
+      await saveNext(next);
+      return NextResponse.json({ ok: true, next });
     }
     return fail("Ukendt kind.", 400);
   } catch (err) {

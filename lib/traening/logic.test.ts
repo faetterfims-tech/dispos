@@ -96,3 +96,22 @@ test("volume tæller kun vægtøvelser", () => {
   const s: Session = { id: "x", date: "2026-11-17", dayId: "a", exercises: [{ id: "roning", sets: [{ kg: 10, reps: 10 }] }, { id: "armstraek", sets: [{ kg: 0, reps: 20 }] }] };
   assert.equal(volume(s, (id) => exerciseById(id)?.unit), 100);
 });
+
+test("rækkefølge: næste pas, spring over og forfra", async () => {
+  const { nextInOrder, upNext } = await import("./logic");
+  const order = ["a", "b", "c"];
+  assert.equal(nextInOrder("a", order), "b");
+  assert.equal(nextInOrder("c", order), "a");
+  assert.equal(nextInOrder("b", order, 2), "a");
+  assert.equal(nextInOrder("ukendt", order), "a");
+
+  assert.equal(upNext([], null, order), "a");
+  const s = (dayId: string, savedAt: string): Session => ({ id: savedAt, date: savedAt.slice(0, 10), dayId, savedAt, exercises: [] });
+  const sessions = [s("a", "2026-11-21T07:00:00.000Z"), s("b", "2026-11-23T07:00:00.000Z")];
+  // En dag sprunget over ændrer ikke noget: næste er stadig efter det sidst gemte.
+  assert.equal(upNext(sessions, null, order), "c");
+  // Spring over efter sidste pas → det valgte gælder.
+  assert.equal(upNext(sessions, { dayId: "a", setAt: "2026-11-24T06:00:00.000Z" }, order), "a");
+  // Et gammelt spring over overhales af et nyere pas.
+  assert.equal(upNext(sessions, { dayId: "a", setAt: "2026-11-22T06:00:00.000Z" }, order), "c");
+});
