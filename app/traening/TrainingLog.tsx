@@ -301,6 +301,7 @@ export default function TrainingLog() {
           onPick={(date, dayId) => setDraft(buildDraft(date, dayId, data.sessions))}
           onSave={saveSession}
           onSkip={skipPass}
+          upNextId={upNext(data.sessions, data.next, ORDER)}
         />
       )}
       {tab === "fremgang" && <ProgressTab sessions={data.sessions} body={data.body} />}
@@ -312,15 +313,27 @@ export default function TrainingLog() {
 
 /* ---------- Træn ---------- */
 
-function WeekStrip({ sessions, selected, onPick }: { sessions: Session[]; selected: string; onPick: (date: string) => void }) {
+/**
+ * Hvilket pas en dag har: det trænede, hvis man har trænet, ellers det, der
+ * står for tur (i dag) og dem derefter (kommende dage). Tidligere dage uden træning: ingen.
+ */
+function passForDate(date: string, sessions: Session[], upNextId: string): { day: Day | undefined; trained: boolean } {
+  const trainedDay = sessions.find((s) => s.date === date);
+  if (trainedDay) return { day: dayById(trainedDay.dayId), trained: true };
+  const t = today();
+  if (date < t) return { day: undefined, trained: false };
+  const todayTrained = sessions.some((s) => s.date === t);
+  const ahead = Math.round((new Date(`${date}T12:00:00Z`).getTime() - new Date(`${t}T12:00:00Z`).getTime()) / 86_400_000);
+  return { day: dayById(nextInOrder(upNextId, ORDER, todayTrained ? ahead - 1 : ahead)), trained: false };
+}
+
+function WeekStrip({ sessions, selected, upNextId, onPick }: { sessions: Session[]; selected: string; upNextId: string; onPick: (date: string) => void }) {
   const monday = weekStart(today());
-  const doneDay = new Map(sessions.map((s) => [s.date, dayById(s.dayId)]));
   return (
     <div className="tr-week">
       {WEEKDAYS.map((label, i) => {
         const date = addDays(monday, i);
-        const day = doneDay.get(date);
-        const trained = doneDay.has(date);
+        const { day, trained } = passForDate(date, sessions, upNextId);
         const isToday = date === today();
         const future = date > today();
         return (
@@ -329,10 +342,11 @@ function WeekStrip({ sessions, selected, onPick }: { sessions: Session[]; select
             className={`tr-weekday${date === selected ? " selected" : ""}${isToday ? " today" : ""}${future ? " future" : ""}`}
             onClick={() => onPick(date)}
             style={{ "--c": day?.color ?? "#9b988f" } as CSSProperties}
-            aria-label={`${label}${trained ? `: ${day?.name ?? "trænet"}` : ""}`}
+            aria-label={`${label}: ${day?.name ?? "fri"}${trained ? ", trænet" : ""}`}
           >
             <span className="tr-weekday-label">{label}</span>
-            <span className={`tr-dot${trained ? " done" : ""}`}>{trained ? "✓" : new Date(`${date}T12:00:00`).getDate()}</span>
+            <span className={`tr-dot${trained ? " done" : ""}${day ? " has-pass" : ""}`}>{trained ? "✓" : new Date(`${date}T12:00:00`).getDate()}</span>
+            <span className="tr-weekday-pass">{day?.short ?? "fri"}</span>
           </button>
         );
       })}
@@ -348,6 +362,7 @@ export function TrainTab({
   onPick,
   onSave,
   onSkip,
+  upNextId,
 }: {
   draft: Draft;
   sessions: Session[];
@@ -356,6 +371,7 @@ export function TrainTab({
   onPick: (date: string, dayId: string) => void;
   onSave: () => void;
   onSkip: () => void;
+  upNextId: string;
 }) {
   const day = dayById(draft.dayId) ?? DAYS[0];
   const nextDay = dayById(nextInOrder(day.id, ORDER));
@@ -378,8 +394,8 @@ export function TrainTab({
   if (preview) {
     return (
       <>
-        <WeekStrip sessions={sessions} selected={preview} onPick={pickDate} />
-        <PreviewDay date={preview} fromDayId={draft.dayId} sessions={sessions} onBack={() => setPreview(null)} />
+        <WeekStrip sessions={sessions} selected={preview} upNextId={upNextId} onPick={pickDate} />
+        <PreviewDay date={preview} day={passForDate(preview, sessions, upNextId).day ?? DAYS[0]} sessions={sessions} onBack={() => setPreview(null)} />
       </>
     );
   }
@@ -401,7 +417,7 @@ export function TrainTab({
 
   return (
     <>
-      <WeekStrip sessions={sessions} selected={draft.date} onPick={pickDate} />
+      <WeekStrip sessions={sessions} selected={draft.date} upNextId={upNextId} onPick={pickDate} />
 
       <div className="tr-hero" style={{ "--c": day.color } as CSSProperties}>
         <div className="tr-hero-date">{draft.date === today() ? "Dit næste pas" : `Efterregistrering · ${fmtLong(draft.date)}`}</div>
@@ -591,9 +607,7 @@ function relDay(date: string) {
   return fmtLong(date);
 }
 
-export function PreviewDay({ date, fromDayId, sessions, onBack }: { date: string; fromDayId: string; sessions: Session[]; onBack: () => void }) {
-  const ahead = Math.round((new Date(`${date}T12:00:00Z`).getTime() - new Date(`${today()}T12:00:00Z`).getTime()) / 86_400_000);
-  const day = dayById(nextInOrder(fromDayId, ORDER, ahead)) ?? DAYS[0];
+export function PreviewDay({ date, day, sessions, onBack }: { date: string; day: Day; sessions: Session[]; onBack: () => void }) {
   const back = (
     <button className="secondary" style={{ width: "100%" }} onClick={onBack}>
       ← Tilbage til dit næste pas
@@ -608,7 +622,7 @@ export function PreviewDay({ date, fromDayId, sessions, onBack }: { date: string
         <div className="tr-hero-meta">
           {day.exercises.length === 1 ? "1 øvelse" : `${day.exercises.length} øvelser`} · {day.minutes}
         </div>
-        <div className="tr-hero-note">{ahead === 1 ? "Hvis du træner i dag og i morgen, er det her passet i morgen." : `Hvis du træner hver dag frem til da, er det her pas nr. ${ahead + 1} fra nu.`}</div>
+        <div className="tr-hero-note">Hvis du træner hver dag frem til da. Holder du fri en dag, rykker passene bare en dag.</div>
       </div>
 
       {day.warmup && (

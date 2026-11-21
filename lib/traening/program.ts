@@ -28,7 +28,9 @@ export interface Exercise {
 export interface Day {
   id: string;
   name: string;
-  /** 1 = mandag … 7 = søndag. */
+  /** Kort navn til ugeoversigten. */
+  short: string;
+  /** Bruges ikke længere — passene tages i rækkefølge. */
   weekday: number;
   color: string;
   minutes: string;
@@ -262,12 +264,12 @@ const E = {
 };
 
 export const DAYS: Day[] = [
-  { id: "overkrop-a", name: "Overkrop A", weekday: 1, color: "#2a6fd6", minutes: "45–55 min", warmup: true, exercises: [E.armstraek, E.roning, E.skulderpres, E.pullups, E.curl] },
-  { id: "underkrop", name: "Ben, mave og ryg", weekday: 2, color: "#1f8a5b", minutes: "45–55 min", warmup: true, exercises: [E.goblet, E.rdl, E.hoftehaev, E.bulgarsk, E.planke, E.knaeloeft] },
-  { id: "interval", name: "Kondition", weekday: 3, color: "#e2662b", minutes: "20 min", warmup: false, exercises: [E.intervaller] },
-  { id: "overkrop-b", name: "Overkrop B", weekday: 4, color: "#6a4bc9", minutes: "45–55 min", warmup: true, exercises: [E.skraapres, E.chinups, E.sideloeft, E.dips, E.triceps] },
-  { id: "fuldkrop", name: "Hele kroppen", weekday: 5, color: "#c43d6b", minutes: "45–55 min", warmup: true, exercises: [E.goblet, E.roning, E.skulderpres, E.rdl, E.deadbug] },
-  { id: "interval-2", name: "Kondition eller gåtur", weekday: 6, color: "#e2662b", minutes: "20–60 min", warmup: false, exercises: [E.intervaller] },
+  { id: "overkrop-a", name: "Overkrop A", short: "Over A", weekday: 1, color: "#2a6fd6", minutes: "45–55 min", warmup: true, exercises: [E.armstraek, E.roning, E.skulderpres, E.pullups, E.curl] },
+  { id: "underkrop", name: "Ben, mave og ryg", short: "Ben", weekday: 2, color: "#1f8a5b", minutes: "45–55 min", warmup: true, exercises: [E.goblet, E.rdl, E.hoftehaev, E.bulgarsk, E.planke, E.knaeloeft] },
+  { id: "interval", name: "Kondition", short: "Kondi", weekday: 3, color: "#e2662b", minutes: "20 min", warmup: false, exercises: [E.intervaller] },
+  { id: "overkrop-b", name: "Overkrop B", short: "Over B", weekday: 4, color: "#6a4bc9", minutes: "45–55 min", warmup: true, exercises: [E.skraapres, E.chinups, E.sideloeft, E.dips, E.triceps] },
+  { id: "fuldkrop", name: "Hele kroppen", short: "Hele", weekday: 5, color: "#c43d6b", minutes: "45–55 min", warmup: true, exercises: [E.goblet, E.roning, E.skulderpres, E.rdl, E.deadbug] },
+  { id: "interval-2", name: "Kondition eller gåtur", short: "Kondi", weekday: 6, color: "#e2662b", minutes: "20–60 min", warmup: false, exercises: [E.intervaller] },
 ];
 
 /** Alle øvelser, uden dubletter (samme øvelse kan stå på flere dage). */
