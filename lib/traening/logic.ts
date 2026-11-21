@@ -211,3 +211,43 @@ export function volume(session: Session, unitOf: (id: string) => Unit | undefine
   }
   return Math.round(v);
 }
+
+/* ---------- Rækkefølge i stedet for ugedage ---------- */
+
+/** Et "spring over": det pas, man har valgt at fortsætte med, og hvornår. */
+export interface NextPointer {
+  dayId: string;
+  /** ISO-tidspunkt */
+  setAt: string;
+}
+
+/** Passet efter `dayId` i rækken (starter forfra efter det sidste). */
+export function nextInOrder(dayId: string, order: string[], steps = 1): string {
+  if (!order.length) return dayId;
+  const i = order.indexOf(dayId);
+  const start = i < 0 ? -1 : i;
+  return order[(((start + steps) % order.length) + order.length) % order.length];
+}
+
+/** Senest gemte pas (efter hvornår det blev gemt, ellers dato). */
+export function latestSession(sessions: Session[]): Session | null {
+  let best: Session | null = null;
+  for (const s of sessions) {
+    const key = s.savedAt ?? `${s.date}T00:00:00.000Z`;
+    const bestKey = best ? (best.savedAt ?? `${best.date}T00:00:00.000Z`) : "";
+    if (!best || key > bestKey) best = s;
+  }
+  return best;
+}
+
+/**
+ * Hvilket pas står for tur? Det efter det senest gemte — medmindre man har
+ * trykket "spring over" efter det, så gælder det valgte.
+ */
+export function upNext(sessions: Session[], pointer: NextPointer | null, order: string[]): string {
+  const last = latestSession(sessions);
+  const lastKey = last ? (last.savedAt ?? `${last.date}T00:00:00.000Z`) : "";
+  if (pointer && order.includes(pointer.dayId) && pointer.setAt > lastKey) return pointer.dayId;
+  if (!last) return order[0];
+  return nextInOrder(last.dayId, order);
+}
