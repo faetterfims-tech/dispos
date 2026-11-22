@@ -32,6 +32,8 @@ Træningslog til hjemmeprogrammet (4 styrkepas + 2 intervalpas om ugen).
 - **Vægt**: vægt og mål om maven med grafer.
 - **Tidligere**: alle træninger med mulighed for at slette.
 
+**Deling med venner og familie:** under fanen "Inviter" (kun for ejeren) laves personlige links (`/t/<token>`). Linket sætter en cookie (`dispos_traening`), som giver adgang til `/traening` og `/api/traening` og intet andet. Resten af dispos kræver stadig `DISPOS_PASSWORD` (se `middleware.ts`). Hver inviteret har sine egne data under `traening:u:<id>:*`, mens ejerens data ligger under de oprindelige `traening:*`-nøgler. Kun en sha256-hash af tokenet gemmes (`traening:tokens`, `traening:users`). Logikken ligger i `lib/traening-users.ts` og `lib/traening/invite-core.ts`.
+
 Programmet ligger i `lib/traening/program.ts`, logikken i `lib/traening/logic.ts` (tests i `logic.test.ts`). Data gemmes i Upstash Redis (`traening:sessions`, `traening:body`) via `app/api/traening/route.ts`.
 
 ## Miljøvariabler (Vercel → Settings → Environment Variables)

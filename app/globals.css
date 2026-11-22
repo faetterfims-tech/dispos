@@ -1107,3 +1107,46 @@ button.danger {
   font-size: 0.85rem;
   margin: 0.2rem 0 0.6rem;
 }
+
+/* Invitationer */
+.tr-hello {
+  margin: -0.4rem 0 0;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.tr-invite-fresh {
+  border-color: color-mix(in srgb, var(--good) 45%, var(--border));
+  background: color-mix(in srgb, var(--good) 7%, var(--surface));
+}
+
+.tr-invite-link {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.8rem;
+  word-break: break-all;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+  user-select: all;
+}
+
+.tr-invitees {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.tr-invitee {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tr-invitee .small {
+  display: block;
+}
+
+.tr-invitee.inactive strong {
+  color: var(--text-3);
+}
