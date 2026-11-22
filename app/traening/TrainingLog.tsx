@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import { DAYS, EXERCISES, RYG_OPVARMNING, dayById, exerciseById, videoUrl, type Day, type Exercise, type Unit } from "@/lib/traening/program";
+import { DAYS, EXERCISES, PROGRAMS, RYG_OPVARMNING, dayById, exerciseById, orderFor, videoUrl, type Day, type Exercise, type ProgramId, type Unit } from "@/lib/traening/program";
 import {
   fmtKg,
   lastLog,
@@ -52,6 +52,8 @@ interface Data {
   sessions: Session[];
   body: BodyEntry[];
   next: NextPointer | null;
+  /** Valgt program: med eller uden udstyr. */
+  program?: ProgramId;
   /** Hvem er logget ind (ejeren eller en inviteret). */
   me?: { name: string; owner: boolean };
 }
@@ -94,8 +96,8 @@ const addDays = (d: string, n: number) => {
 const COUNT_LABEL: Record<Unit, string> = { kg: "antal", reps: "antal", sek: "sekunder", runder: "runder" };
 const WEEKDAYS = ["Man", "Tir", "Ons", "Tor", "Fre", "Lør", "Søn"];
 
-/** Passene i den rækkefølge, de tages. Der er ingen faste ugedage. */
-const ORDER = DAYS.map((d) => d.id);
+/** Passene i det valgte program, i den rækkefølge de tages. Der er ingen faste ugedage. */
+const orderOf = (data: { program?: ProgramId } | null) => orderFor(data?.program ?? "udstyr");
 
 function buildDraft(date: string, dayId: string, sessions: Session[]): Draft {
   const day = dayById(dayId) ?? DAYS[0];
@@ -140,13 +142,13 @@ export default function TrainingLog() {
         }
         if (!res.ok) throw new Error(body.error ?? `Fejl ${res.status}`);
         if (!body.configured) {
-          const local = load<{ sessions: Session[]; body: BodyEntry[]; next?: NextPointer | null }>(STORAGE.local);
-          setData({ configured: false, sessions: local?.sessions ?? [], body: local?.body ?? [], next: local?.next ?? null });
+          const local = load<{ sessions: Session[]; body: BodyEntry[]; next?: NextPointer | null; program?: ProgramId }>(STORAGE.local);
+          setData({ configured: false, sessions: local?.sessions ?? [], body: local?.body ?? [], next: local?.next ?? null, program: local?.program ?? "udstyr" });
         } else setData({ ...body, next: body.next ?? null });
       } catch (e) {
         setError(e instanceof Error ? e.message : "Kunne ikke hente loggen.");
-        const local = load<{ sessions: Session[]; body: BodyEntry[]; next?: NextPointer | null }>(STORAGE.local);
-        setData({ configured: false, sessions: local?.sessions ?? [], body: local?.body ?? [], next: local?.next ?? null });
+        const local = load<{ sessions: Session[]; body: BodyEntry[]; next?: NextPointer | null; program?: ProgramId }>(STORAGE.local);
+        setData({ configured: false, sessions: local?.sessions ?? [], body: local?.body ?? [], next: local?.next ?? null, program: local?.program ?? "udstyr" });
       }
     })();
   }, []);
@@ -158,7 +160,7 @@ export default function TrainingLog() {
     if (saved && saved.date === today() && dayById(saved.dayId)) setDraft(saved);
     else {
       const d = today();
-      setDraft(buildDraft(d, upNext(data.sessions, data.next, ORDER), data.sessions));
+      setDraft(buildDraft(d, upNext(data.sessions, data.next, orderOf(data)), data.sessions));
     }
   }, [data, draft]);
 
@@ -167,7 +169,7 @@ export default function TrainingLog() {
   }, [draft]);
 
   const persistLocal = useCallback((next: Data) => {
-    if (!next.configured) save(STORAGE.local, { sessions: next.sessions, body: next.body, next: next.next });
+    if (!next.configured) save(STORAGE.local, { sessions: next.sessions, body: next.body, next: next.next, program: next.program });
   }, []);
 
   const showFlash = (msg: string) => {
@@ -224,7 +226,7 @@ export default function TrainingLog() {
       setData(next);
       persistLocal(next);
       save(STORAGE.draft, null);
-      setDraft(buildDraft(today(), nextInOrder(saved.dayId, ORDER), next.sessions));
+      setDraft(buildDraft(today(), nextInOrder(saved.dayId, orderOf(data)), next.sessions));
       showFlash("Træningen er gemt. Godt gået! 💪");
       setTab("historik");
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -238,7 +240,7 @@ export default function TrainingLog() {
   /** Spring det nuværende pas over: næste i rækken står så for tur. */
   async function skipPass() {
     if (!draft || !data) return;
-    const dayId = nextInOrder(draft.dayId, ORDER);
+    const dayId = nextInOrder(draft.dayId, orderOf(data));
     setError(null);
     try {
       const pointer: NextPointer = data.configured ? (await api("POST", { kind: "next", dayId })).next : { dayId, setAt: new Date().toISOString() };
@@ -249,6 +251,22 @@ export default function TrainingLog() {
       showFlash(`Sprunget over. Næste pas er ${dayById(dayId)?.name ?? dayId}.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Kunne ikke springe over.");
+    }
+  }
+
+  /** Skift mellem med og uden udstyr. Næste pas bliver det første i det nye program. */
+  async function chooseProgram(program: ProgramId) {
+    if (!data || !draft || data.program === program) return;
+    setError(null);
+    try {
+      if (data.configured) await api("POST", { kind: "program", program });
+      const next = { ...data, program };
+      setData(next);
+      persistLocal(next);
+      if (!draft.workout) setDraft(buildDraft(draft.date, upNext(data.sessions, data.next, orderFor(program)), data.sessions));
+      showFlash(`Program: ${PROGRAMS.find((p) => p.id === program)?.name}`);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Kunne ikke skifte program.");
     }
   }
 
@@ -348,7 +366,10 @@ export default function TrainingLog() {
           onPick={(date, dayId) => setDraft(buildDraft(date, dayId, data.sessions))}
           onSave={saveSession}
           onSkip={skipPass}
-          upNextId={upNext(data.sessions, data.next, ORDER)}
+          upNextId={upNext(data.sessions, data.next, orderOf(data))}
+          order={orderOf(data)}
+          program={data.program ?? "udstyr"}
+          onProgram={chooseProgram}
         />
       )}
       {tab === "fremgang" && <ProgressTab sessions={data.sessions} body={data.body} />}
@@ -365,23 +386,35 @@ export default function TrainingLog() {
  * Hvilket pas en dag har: det trænede, hvis man har trænet, ellers det, der
  * står for tur (i dag) og dem derefter (kommende dage). Tidligere dage uden træning: ingen.
  */
-function passForDate(date: string, sessions: Session[], upNextId: string): { day: Day | undefined; trained: boolean } {
+function passForDate(date: string, sessions: Session[], upNextId: string, order: string[]): { day: Day | undefined; trained: boolean } {
   const trainedDay = sessions.find((s) => s.date === date);
   if (trainedDay) return { day: dayById(trainedDay.dayId), trained: true };
   const t = today();
   if (date < t) return { day: undefined, trained: false };
   const todayTrained = sessions.some((s) => s.date === t);
   const ahead = Math.round((new Date(`${date}T12:00:00Z`).getTime() - new Date(`${t}T12:00:00Z`).getTime()) / 86_400_000);
-  return { day: dayById(nextInOrder(upNextId, ORDER, todayTrained ? ahead - 1 : ahead)), trained: false };
+  return { day: dayById(nextInOrder(upNextId, order, todayTrained ? ahead - 1 : ahead)), trained: false };
 }
 
-function WeekStrip({ sessions, selected, upNextId, onPick }: { sessions: Session[]; selected: string; upNextId: string; onPick: (date: string) => void }) {
+function WeekStrip({
+  sessions,
+  selected,
+  upNextId,
+  order,
+  onPick,
+}: {
+  sessions: Session[];
+  selected: string;
+  upNextId: string;
+  order: string[];
+  onPick: (date: string) => void;
+}) {
   const monday = weekStart(today());
   return (
     <div className="tr-week">
       {WEEKDAYS.map((label, i) => {
         const date = addDays(monday, i);
-        const { day, trained } = passForDate(date, sessions, upNextId);
+        const { day, trained } = passForDate(date, sessions, upNextId, order);
         const isToday = date === today();
         const future = date > today();
         return (
@@ -412,6 +445,9 @@ export function TrainTab({
   onSkip,
   upNextId,
   update,
+  order,
+  program,
+  onProgram,
 }: {
   draft: Draft;
   sessions: Session[];
@@ -423,9 +459,12 @@ export function TrainTab({
   onSave: () => void;
   onSkip: () => void;
   upNextId: string;
+  order: string[];
+  program: ProgramId;
+  onProgram: (p: ProgramId) => void;
 }) {
   const day = dayById(draft.dayId) ?? DAYS[0];
-  const nextDay = dayById(nextInOrder(day.id, ORDER));
+  const nextDay = dayById(nextInOrder(day.id, order));
   const total = day.exercises.reduce((n, ex) => n + (draft.sets[ex.id]?.length ?? 0), 0);
   const doneSets = day.exercises.reduce((n, ex) => n + (draft.sets[ex.id]?.filter((s) => s.done).length ?? 0), 0);
   const warm = draft.warmup ?? RYG_OPVARMNING.map(() => false);
@@ -508,8 +547,8 @@ export function TrainTab({
   if (preview) {
     return (
       <>
-        <WeekStrip sessions={sessions} selected={preview} upNextId={upNextId} onPick={pickDate} />
-        <PreviewDay date={preview} day={passForDate(preview, sessions, upNextId).day ?? DAYS[0]} sessions={sessions} onBack={() => setPreview(null)} />
+        <WeekStrip sessions={sessions} selected={preview} upNextId={upNextId} order={order} onPick={pickDate} />
+        <PreviewDay date={preview} day={passForDate(preview, sessions, upNextId, order).day ?? DAYS[0]} sessions={sessions} onBack={() => setPreview(null)} />
       </>
     );
   }
@@ -531,7 +570,24 @@ export function TrainTab({
 
   return (
     <>
-      <WeekStrip sessions={sessions} selected={draft.date} upNextId={upNextId} onPick={pickDate} />
+      <div className="tr-program" role="radiogroup" aria-label="Program">
+        {PROGRAMS.map((p) => (
+          <button
+            key={p.id}
+            role="radio"
+            aria-checked={program === p.id}
+            disabled={!!workout}
+            onClick={() => onProgram(p.id)}
+            title={p.description}
+          >
+            {p.id === "udstyr" ? "🏋️ " : "🤸 "}
+            {p.name}
+          </button>
+        ))}
+      </div>
+      {workout && <p className="small" style={{ margin: "-0.4rem 0 0" }}>Programmet kan skiftes, når dagens træning er gemt.</p>}
+
+      <WeekStrip sessions={sessions} selected={draft.date} upNextId={upNextId} order={order} onPick={pickDate} />
 
       <div className="tr-hero" style={{ "--c": day.color } as CSSProperties}>
         <div className="tr-hero-date">{isToday ? (workout ? "I gang" : "Dit næste pas") : `Efterregistrering · ${fmtLong(draft.date)}`}</div>
@@ -566,10 +622,14 @@ export function TrainTab({
           </button>
         )}
         <select className="tr-hero-select" value={draft.dayId} onChange={(e) => onPick(draft.date, e.target.value)} aria-label="Skift pas">
-          {DAYS.map((d) => (
-            <option key={d.id} value={d.id}>
-              Skift pas: {d.name}
-            </option>
+          {PROGRAMS.map((p) => (
+            <optgroup key={p.id} label={p.name}>
+              {DAYS.filter((d) => d.program === p.id).map((d) => (
+                <option key={d.id} value={d.id}>
+                  Skift pas: {d.name}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </div>

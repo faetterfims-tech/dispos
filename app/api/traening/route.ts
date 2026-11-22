@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { storeConfigured } from "@/lib/store";
-import { deleteBody, deleteSession, loadAll, saveBody, saveNext, saveSession } from "@/lib/traening-store";
-import { DAYS } from "@/lib/traening/program";
+import { deleteBody, deleteSession, loadAll, saveBody, saveNext, saveProgram, saveSession } from "@/lib/traening-store";
+import { DAYS, isProgramId } from "@/lib/traening/program";
 import { currentUser } from "@/lib/traening-users";
 import { sanitizeBody, sanitizeSession } from "@/lib/traening/logic";
 
@@ -13,7 +13,7 @@ const noAccess = () => fail("Linket virker ikke længere. Bed om et nyt.", 401);
 
 /** GET /api/traening — alle pas og kropsmål for den, der er logget ind. */
 export async function GET(req: NextRequest) {
-  if (!storeConfigured()) return NextResponse.json({ configured: false, sessions: [], body: [], next: null, me: { name: "Daniel", owner: true } });
+  if (!storeConfigured()) return NextResponse.json({ configured: false, sessions: [], body: [], next: null, program: "udstyr", me: { name: "Daniel", owner: true } });
   try {
     const user = await currentUser(req);
     if (!user) return noAccess();
@@ -24,12 +24,12 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** POST /api/traening — { kind: "session", session } · { kind: "body", entry } · { kind: "next", dayId } (spring over). */
+/** POST /api/traening — { kind: "session", session } · { kind: "body", entry } · { kind: "next", dayId } (spring over) · { kind: "program", program }. */
 export async function POST(req: NextRequest) {
   if (!storeConfigured()) return fail("Lageret er ikke koblet på.", 503);
   const user = await currentUser(req);
   if (!user) return noAccess();
-  let body: { kind?: string; session?: unknown; entry?: unknown; dayId?: unknown };
+  let body: { kind?: string; session?: unknown; entry?: unknown; dayId?: unknown; program?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -54,6 +54,11 @@ export async function POST(req: NextRequest) {
       const next = { dayId: body.dayId, setAt: new Date().toISOString() };
       await saveNext(user.id, next);
       return NextResponse.json({ ok: true, next });
+    }
+    if (body.kind === "program") {
+      if (!isProgramId(body.program)) return fail("Ukendt program.", 422);
+      await saveProgram(user.id, body.program);
+      return NextResponse.json({ ok: true, program: body.program });
     }
     return fail("Ukendt kind.", 400);
   } catch (err) {
