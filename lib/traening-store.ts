@@ -1,13 +1,14 @@
 import "server-only";
 import type { BodyEntry, NextPointer, Session } from "./traening/logic";
 import { keyPrefix } from "./traening/invite-core";
+import { isProgramId, type ProgramId } from "./traening/program";
 import { del, hdel, hgetall, hset } from "./store";
 
 /**
  * Data pr. bruger i Upstash Redis:
  *   <præfiks>sessions → { id: Session-JSON }
  *   <præfiks>body     → { dato: BodyEntry-JSON }
- *   <præfiks>meta     → { next: NextPointer-JSON }
+ *   <præfiks>meta     → { next: NextPointer-JSON, program: "udstyr" | "kropsvaegt" }
  * Præfikset er "traening:" for ejeren og "traening:u:<id>:" for inviterede.
  */
 const keys = (userId: string) => {
@@ -27,7 +28,7 @@ function parseAll<T>(hash: Record<string, string>): T[] {
   return out;
 }
 
-export async function loadAll(userId: string): Promise<{ sessions: Session[]; body: BodyEntry[]; next: NextPointer | null }> {
+export async function loadAll(userId: string): Promise<{ sessions: Session[]; body: BodyEntry[]; next: NextPointer | null; program: ProgramId }> {
   const k = keys(userId);
   const [s, b, m] = await Promise.all([hgetall(k.sessions), hgetall(k.body), hgetall(k.meta)]);
   let next: NextPointer | null = null;
@@ -38,6 +39,7 @@ export async function loadAll(userId: string): Promise<{ sessions: Session[]; bo
   }
   return {
     next,
+    program: isProgramId(m.program) ? m.program : "udstyr",
     sessions: parseAll<Session>(s).sort((a, b) => b.date.localeCompare(a.date)),
     body: parseAll<BodyEntry>(b).sort((a, b) => a.date.localeCompare(b.date)),
   };
@@ -60,3 +62,4 @@ export async function deleteAllData(userId: string): Promise<void> {
   const k = keys(userId);
   await del(k.sessions, k.body, k.meta);
 }
+export const saveProgram = (userId: string, program: ProgramId) => hset(keys(userId).meta, { program });

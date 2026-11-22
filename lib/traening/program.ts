@@ -25,8 +25,12 @@ export interface Exercise {
   tip?: string;
 }
 
+export type ProgramId = "udstyr" | "kropsvaegt";
+
 export interface Day {
   id: string;
+  /** Hvilket program passet hører til. */
+  program: ProgramId;
   name: string;
   /** Kort navn til ugeoversigten. */
   short: string;
@@ -261,16 +265,129 @@ const E = {
     target: [8, 12],
     tip: "Tal pr. side.",
   }),
+
+  /* ---- Uden udstyr ---- */
+  squat: ex({
+    id: "squat",
+    name: "Squat",
+    muscles: "Ben og baller",
+    how: "Stå med fødderne i skulderbredde. Sæt dig ned, som på en lav stol, med armene frem, og rejs dig igen. Ret ryg, hælene i gulvet.",
+    aka: "bodyweight squat",
+    unit: "reps",
+    sets: 3,
+    target: [12, 20],
+    tip: "For let: hold 2 sek i bunden, eller gå langsomt ned (3 sek).",
+  }),
+  udfald: ex({
+    id: "udfald",
+    name: "Udfald bagud",
+    muscles: "Ben og baller",
+    how: "Tag et stort skridt bagud, og bøj begge knæ, til det bagerste næsten rører gulvet. Pres op med det forreste ben. Skift ben.",
+    aka: "reverse lunge",
+    unit: "reps",
+    sets: 3,
+    target: [8, 12],
+    tip: "Tal pr. ben. Hold fast i en stol, hvis balancen driller.",
+  }),
+  splitstol: ex({
+    id: "splitstol",
+    name: "Udfald med bagerste fod på en stol (uden vægt)",
+    muscles: "Ben og baller",
+    how: "Stå med ryggen til en stol, og læg den ene fod op på den. Bøj det forreste ben, til knæet bagved næsten rører gulvet.",
+    aka: "bodyweight bulgarian split squat",
+    unit: "reps",
+    sets: 3,
+    target: [8, 15],
+    tip: "Tal pr. ben.",
+  }),
+  ytraek: ex({
+    id: "ytraek",
+    name: "Armløft på maven (Y)",
+    muscles: "Øverste ryg og skuldre",
+    how: "Lig på maven med armene skråt frem som et Y og tommelfingrene op. Løft armene fra gulvet ved at klemme skulderbladene sammen, hold 2 sek, og sænk.",
+    aka: "prone y raise",
+    unit: "reps",
+    sets: 3,
+    target: [10, 15],
+    tip: "Hovedet bliver nede, og blikket mod gulvet. Det er armene og skulderbladene, der arbejder, ikke lænden.",
+  }),
+  ttraek: ex({
+    id: "ttraek",
+    name: "Armløft på maven (T)",
+    muscles: "Øverste ryg og skuldre",
+    how: "Lig på maven med armene lige ud til siden som et T. Løft armene ved at klemme skulderbladene sammen, hold 2 sek, og sænk.",
+    aka: "prone t raise",
+    unit: "reps",
+    sets: 3,
+    target: [10, 15],
+  }),
+  skulderarm: ex({
+    id: "skulderarm",
+    name: "Armbøjninger med numsen i vejret",
+    muscles: "Skuldre og arme",
+    how: "Stå i et omvendt V med hænder og fødder i gulvet og numsen højt. Bøj armene, så hovedet går ned mod gulvet foran hænderne, og pres op.",
+    aka: "pike push up",
+    unit: "reps",
+    sets: 3,
+    target: [6, 12],
+    tip: "For svært: gør V'et mindre, med fødderne længere fra hænderne.",
+  }),
+  hoftebenet: ex({
+    id: "hoftebenet",
+    name: "Løft hoften på ét ben",
+    muscles: "Baller og baglår, aflaster lænden",
+    how: "Lig på ryggen med bøjede knæ, og stræk det ene ben. Pres hoften op med det andet ben, klem ballerne, og sænk langsomt.",
+    aka: "single leg glute bridge",
+    unit: "reps",
+    sets: 3,
+    target: [8, 15],
+    tip: "Tal pr. ben. For svært: brug begge ben.",
+  }),
+  sideplanke: ex({
+    id: "sideplanke",
+    name: "Planke på siden",
+    muscles: "Mave (siderne) og ryg",
+    how: "Lig på siden på albuen med benene strakt. Løft hoften, så kroppen er lige, og hold. Skift side.",
+    aka: "side plank",
+    unit: "sek",
+    sets: 3,
+    target: [20, 45],
+    tip: "Tal pr. side. For svært: tag den på knæene.",
+  }),
+  bjergbestiger: ex({
+    id: "bjergbestiger",
+    name: "Bjergbestiger",
+    muscles: "Mave, skuldre og kondition",
+    how: "Stå i armbøjningsstilling. Træk skiftevis knæene op mod brystet i roligt tempo, med hoften nede og ryggen lige.",
+    aka: "mountain climbers",
+    unit: "sek",
+    sets: 3,
+    target: [20, 40],
+  }),
 };
 
 export const DAYS: Day[] = [
-  { id: "overkrop-a", name: "Overkrop A", short: "Over A", weekday: 1, color: "#2a6fd6", minutes: "45–55 min", warmup: true, exercises: [E.armstraek, E.roning, E.skulderpres, E.pullups, E.curl] },
-  { id: "underkrop", name: "Ben, mave og ryg", short: "Ben", weekday: 2, color: "#1f8a5b", minutes: "45–55 min", warmup: true, exercises: [E.goblet, E.rdl, E.hoftehaev, E.bulgarsk, E.planke, E.knaeloeft] },
-  { id: "interval", name: "Kondition", short: "Kondi", weekday: 3, color: "#e2662b", minutes: "20 min", warmup: false, exercises: [E.intervaller] },
-  { id: "overkrop-b", name: "Overkrop B", short: "Over B", weekday: 4, color: "#6a4bc9", minutes: "45–55 min", warmup: true, exercises: [E.skraapres, E.chinups, E.sideloeft, E.dips, E.triceps] },
-  { id: "fuldkrop", name: "Hele kroppen", short: "Hele", weekday: 5, color: "#c43d6b", minutes: "45–55 min", warmup: true, exercises: [E.goblet, E.roning, E.skulderpres, E.rdl, E.deadbug] },
-  { id: "interval-2", name: "Kondition eller gåtur", short: "Kondi", weekday: 6, color: "#e2662b", minutes: "20–60 min", warmup: false, exercises: [E.intervaller] },
+  { id: "overkrop-a", program: "udstyr", name: "Overkrop A", short: "Over A", weekday: 1, color: "#2a6fd6", minutes: "45–55 min", warmup: true, exercises: [E.armstraek, E.roning, E.skulderpres, E.pullups, E.curl] },
+  { id: "underkrop", program: "udstyr", name: "Ben, mave og ryg", short: "Ben", weekday: 2, color: "#1f8a5b", minutes: "45–55 min", warmup: true, exercises: [E.goblet, E.rdl, E.hoftehaev, E.bulgarsk, E.planke, E.knaeloeft] },
+  { id: "interval", program: "udstyr", name: "Kondition", short: "Kondi", weekday: 3, color: "#e2662b", minutes: "20 min", warmup: false, exercises: [E.intervaller] },
+  { id: "overkrop-b", program: "udstyr", name: "Overkrop B", short: "Over B", weekday: 4, color: "#6a4bc9", minutes: "45–55 min", warmup: true, exercises: [E.skraapres, E.chinups, E.sideloeft, E.dips, E.triceps] },
+  { id: "fuldkrop", program: "udstyr", name: "Hele kroppen", short: "Hele", weekday: 5, color: "#c43d6b", minutes: "45–55 min", warmup: true, exercises: [E.goblet, E.roning, E.skulderpres, E.rdl, E.deadbug] },
+  { id: "interval-2", program: "udstyr", name: "Kondition eller gåtur", short: "Kondi", weekday: 6, color: "#e2662b", minutes: "20–60 min", warmup: false, exercises: [E.intervaller] },
+  // Uden udstyr: to helkropspas på skift med kondition. Kun gulv og en stol.
+  { id: "krop-a", program: "kropsvaegt", name: "Hele kroppen A", short: "Krop A", weekday: 0, color: "#0f8b8d", minutes: "35–45 min", warmup: true, exercises: [E.squat, E.armstraek, E.ytraek, E.udfald, E.hoftehaev, E.planke] },
+  { id: "krop-interval", program: "kropsvaegt", name: "Kondition", short: "Kondi", weekday: 0, color: "#e2662b", minutes: "20 min", warmup: false, exercises: [E.intervaller] },
+  { id: "krop-b", program: "kropsvaegt", name: "Hele kroppen B", short: "Krop B", weekday: 0, color: "#7a5c2e", minutes: "35–45 min", warmup: true, exercises: [E.splitstol, E.skulderarm, E.ttraek, E.dips, E.hoftebenet, E.sideplanke, E.bjergbestiger] },
+  { id: "krop-interval-2", program: "kropsvaegt", name: "Kondition eller gåtur", short: "Kondi", weekday: 0, color: "#e2662b", minutes: "20–60 min", warmup: false, exercises: [E.intervaller] },
 ];
+
+export const PROGRAMS: { id: ProgramId; name: string; description: string }[] = [
+  { id: "udstyr", name: "Med udstyr", description: "Håndvægte, pull-up-stang og en stol. 4 styrkepas og 2 konditionspas." },
+  { id: "kropsvaegt", name: "Uden udstyr", description: "Kun din egen krop, gulvet og en stol. Hele kroppen hver gang, skiftevis med kondition." },
+];
+
+/** Passene i et program, i den rækkefølge de tages. */
+export const orderFor = (program: ProgramId) => DAYS.filter((d) => d.program === program).map((d) => d.id);
+export const isProgramId = (v: unknown): v is ProgramId => v === "udstyr" || v === "kropsvaegt";
 
 /** Alle øvelser, uden dubletter (samme øvelse kan stå på flere dage). */
 export const EXERCISES: Exercise[] = Object.values(E);
