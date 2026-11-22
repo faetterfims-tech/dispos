@@ -59,3 +59,14 @@ export async function hdel(key: string, ...fields: string[]): Promise<void> {
   if (fields.length === 0) return;
   await command(["HDEL", key, ...fields]);
 }
+
+/** Henter ét felt i en hash. */
+export async function hget(key: string, field: string): Promise<string | null> {
+  return command<string | null>(["HGET", key, field]);
+}
+
+/** Sletter nøgler. */
+export async function del(...keys: string[]): Promise<void> {
+  if (keys.length === 0) return;
+  await command(["DEL", ...keys]);
+}

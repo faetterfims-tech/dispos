@@ -21,7 +21,7 @@ import LineChart from "./LineChart";
 import WarmupTimer from "./WarmupTimer";
 import { fmtDuration, fmtMinutes, splitTime, type Interval } from "@/lib/traening/timing";
 
-type Tab = "traen" | "fremgang" | "krop" | "historik";
+type Tab = "traen" | "fremgang" | "krop" | "historik" | "inviter";
 interface SetDraft {
   kg: string;
   reps: string;
@@ -52,6 +52,8 @@ interface Data {
   sessions: Session[];
   body: BodyEntry[];
   next: NextPointer | null;
+  /** Hvem er logget ind (ejeren eller en inviteret). */
+  me?: { name: string; owner: boolean };
 }
 
 const STORAGE = { draft: "dispos.traening.draft.v3", local: "dispos.traening.local" };
@@ -124,12 +126,18 @@ export default function TrainingLog() {
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
   const [flash, setFlash] = useState<string | null>(null);
+  /** Linket virker ikke længere (adgang fjernet eller nyt link lavet). */
+  const [denied, setDenied] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
         const res = await fetch("/api/traening", { cache: "no-store" });
         const body = (await res.json()) as Data & { error?: string };
+        if (res.status === 401) {
+          setDenied(body.error ?? "Linket virker ikke længere.");
+          return;
+        }
         if (!res.ok) throw new Error(body.error ?? `Fejl ${res.status}`);
         if (!body.configured) {
           const local = load<{ sessions: Session[]; body: BodyEntry[]; next?: NextPointer | null }>(STORAGE.local);
@@ -294,19 +302,31 @@ export default function TrainingLog() {
     }
   }
 
+  if (denied)
+    return (
+      <div className="card">
+        <h2>Ingen adgang</h2>
+        <p className="small" style={{ marginBottom: 0 }}>
+          {denied} Hvis du har fået et nyt link, så åbn det igen.
+        </p>
+      </div>
+    );
   if (!data || !draft) return <p className="muted">Henter…</p>;
+
+  const owner = data.me?.owner ?? true;
+  const tabs: [Tab, string, string][] = [
+    ["traen", "🏋️", "Træn"],
+    ["fremgang", "📈", "Fremgang"],
+    ["krop", "⚖️", "Vægt"],
+    ["historik", "🗓️", "Tidligere"],
+    ...(owner && data.configured ? ([["inviter", "👥", "Inviter"]] as [Tab, string, string][]) : []),
+  ];
 
   return (
     <div className="tr stack">
-      <div className="tr-tabs" role="tablist">
-        {(
-          [
-            ["traen", "🏋️", "Træn"],
-            ["fremgang", "📈", "Fremgang"],
-            ["krop", "⚖️", "Vægt"],
-            ["historik", "🗓️", "Tidligere"],
-          ] as [Tab, string, string][]
-        ).map(([id, icon, label]) => (
+      {data.me && !data.me.owner && <p className="tr-hello">Hej {data.me.name} 👋</p>}
+      <div className="tr-tabs" role="tablist" style={{ gridTemplateColumns: `repeat(${tabs.length}, 1fr)` }}>
+        {tabs.map(([id, icon, label]) => (
           <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>
             <span aria-hidden>{icon}</span>
             {label}
@@ -334,6 +354,7 @@ export default function TrainingLog() {
       {tab === "fremgang" && <ProgressTab sessions={data.sessions} body={data.body} />}
       {tab === "krop" && <BodyTab body={data.body} onSave={saveBodyEntry} onDelete={removeBody} />}
       {tab === "historik" && <HistoryTab sessions={data.sessions} onDelete={removeSession} />}
+      {tab === "inviter" && owner && <InviteTab />}
     </div>
   );
 }
@@ -1064,6 +1085,169 @@ export function HistoryTab({ sessions, onDelete }: { sessions: Session[]; onDele
           </details>
         );
       })}
+    </>
+  );
+}
+
+/* ---------- Inviter (kun ejeren) ---------- */
+
+interface Invitee {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastSeen: string | null;
+  active: boolean;
+  sessions: number;
+}
+
+function InviteTab() {
+  const [users, setUsers] = useState<Invitee[] | null>(null);
+  const [name, setName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [fresh, setFresh] = useState<{ name: string; link: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/traening/invitationer", { cache: "no-store" });
+      const body = await res.json();
+      if (!res.ok || !body.ok) throw new Error(body.error ?? `Fejl ${res.status}`);
+      setUsers(body.users);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Kunne ikke hente invitationer.");
+    }
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  async function post(payload: unknown) {
+    setBusy(true);
+    setErr(null);
+    setCopied(false);
+    try {
+      const res = await fetch("/api/traening/invitationer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+      const body = await res.json();
+      if (!res.ok || !body.ok) throw new Error(body.error ?? `Fejl ${res.status}`);
+      setFresh({ name: body.name, link: body.link });
+      setName("");
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Kunne ikke lave linket.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(id: string, full: boolean) {
+    setErr(null);
+    try {
+      const res = await fetch(`/api/traening/invitationer?id=${id}${full ? "&slet=1" : ""}`, { method: "DELETE" });
+      const body = await res.json();
+      if (!res.ok || !body.ok) throw new Error(body.error ?? `Fejl ${res.status}`);
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Kunne ikke fjerne adgangen.");
+    }
+  }
+
+  const share = async () => {
+    if (!fresh) return;
+    const text = `Hej ${fresh.name}! Her er dit link til træningsappen. Åbn det på din telefon, så er du logget ind:`;
+    try {
+      if (navigator.share) await navigator.share({ title: "Træning", text, url: fresh.link });
+      else {
+        await navigator.clipboard.writeText(`${text} ${fresh.link}`);
+        setCopied(true);
+      }
+    } catch {
+      /* annulleret */
+    }
+  };
+  const copy = async () => {
+    if (!fresh) return;
+    try {
+      await navigator.clipboard.writeText(fresh.link);
+      setCopied(true);
+    } catch {
+      setErr("Kunne ikke kopiere. Tryk og hold på linket i stedet.");
+    }
+  };
+
+  return (
+    <>
+      <div className="card">
+        <h2>Inviter en ven</h2>
+        <p className="small" style={{ marginTop: 0 }}>
+          Hver person får sit eget link og sin egen private log med samme program som dig. Med linket kommer de kun ind i træningsappen, ikke
+          i resten af dispos.
+        </p>
+        <div className="controls">
+          <label className="field" style={{ flex: 1, minWidth: 160 }}>
+            Navn
+            <input inputMode="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Fx Mor" maxLength={40} />
+          </label>
+          <button disabled={busy || !name.trim()} onClick={() => post({ name })}>
+            {busy ? "Laver…" : "Lav link"}
+          </button>
+        </div>
+      </div>
+
+      {err && <div className="notice error">{err}</div>}
+
+      {fresh && (
+        <div className="card tr-invite-fresh">
+          <strong>Link til {fresh.name}</strong>
+          <p className="small" style={{ margin: "0.3rem 0 0.6rem" }}>
+            Send det kun til {fresh.name}. Det vises kun nu, men du kan altid lave et nyt.
+          </p>
+          <div className="tr-invite-link">{fresh.link}</div>
+          <div className="tr-set-actions" style={{ marginTop: "0.7rem" }}>
+            <button onClick={share}>📤 Del</button>
+            <button className="secondary" onClick={copy}>
+              {copied ? "✓ Kopieret" : "Kopiér"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <h2>Inviterede</h2>
+        {users === null ? (
+          <p className="small">Henter…</p>
+        ) : users.length === 0 ? (
+          <p className="small">Ingen endnu.</p>
+        ) : (
+          <div className="tr-invitees">
+            {users.map((u) => (
+              <div key={u.id} className={`tr-invitee${u.active ? "" : " inactive"}`}>
+                <div>
+                  <strong>{u.name}</strong>
+                  <span className="small">
+                    {u.active ? "Har adgang" : "Ingen adgang"} · {u.sessions} {u.sessions === 1 ? "træning" : "træninger"}
+                    {u.lastSeen ? ` · sidst set ${fmtDate(u.lastSeen.slice(0, 10))}` : " · har ikke åbnet linket endnu"}
+                  </span>
+                </div>
+                <div className="tr-set-actions">
+                  <button className="secondary small-btn" disabled={busy} onClick={() => post({ renew: u.id })}>
+                    {u.active ? "Nyt link" : "Giv adgang igen"}
+                  </button>
+                  {u.active ? (
+                    <ConfirmDelete label="Fjern adgang" onConfirm={() => remove(u.id, false)} />
+                  ) : (
+                    <ConfirmDelete label="Slet helt" onConfirm={() => remove(u.id, true)} />
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="small" style={{ marginBottom: 0 }}>
+          Et link kan åbnes på flere enheder. “Nyt link” erstatter det gamle (fx hvis det er blevet delt med andre), og personen skal så åbne det
+          nye. “Fjern adgang” lukker linket, men gemmer træningerne. “Slet helt” sletter personen og alle deres træninger.
+        </p>
+      </div>
     </>
   );
 }

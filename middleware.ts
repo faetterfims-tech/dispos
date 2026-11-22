@@ -4,7 +4,17 @@ import { NextResponse, type NextRequest } from "next/server";
  * Hele dispos er låst bag én adgangskode (DISPOS_PASSWORD).
  * Browseren spørger én gang og husker det. Brugernavnet er ligegyldigt.
  * Uden DISPOS_PASSWORD er siden lukket — så den aldrig ved et uheld står åben.
+ *
+ * Undtagelse: træningsappen kan deles via personlige links (/t/<token>).
+ * Linket sætter en cookie, og med den kommer man ind i /traening og
+ * /api/traening — men intet andet. Selve tjekket af cookien sker i API'et.
  */
+
+/** Samme navn som TRAINING_COOKIE i lib/traening/invite-core.ts (kan ikke importeres i edge). */
+const TRAINING_COOKIE = "dispos_traening";
+
+const isTrainingPath = (path: string) => path === "/traening" || path.startsWith("/traening/") || path === "/api/traening";
+
 export function middleware(req: NextRequest) {
   const password = process.env.DISPOS_PASSWORD;
   if (!password) {
@@ -13,6 +23,10 @@ export function middleware(req: NextRequest) {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   }
+
+  const path = req.nextUrl.pathname;
+  // Invitationslinket tjekker selv sit token.
+  if (path.startsWith("/t/")) return NextResponse.next();
 
   const header = req.headers.get("authorization");
   if (header?.startsWith("Basic ")) {
@@ -24,6 +38,9 @@ export function middleware(req: NextRequest) {
       /* ugyldig base64 */
     }
   }
+
+  // Inviterede (cookie fra linket) må kun komme ind i træningsappen.
+  if (isTrainingPath(path) && req.cookies.get(TRAINING_COOKIE)?.value) return NextResponse.next();
 
   return new NextResponse("Adgangskode påkrævet", {
     status: 401,

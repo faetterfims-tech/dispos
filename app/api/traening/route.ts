@@ -2,17 +2,22 @@ import { NextResponse, type NextRequest } from "next/server";
 import { storeConfigured } from "@/lib/store";
 import { deleteBody, deleteSession, loadAll, saveBody, saveNext, saveSession } from "@/lib/traening-store";
 import { DAYS } from "@/lib/traening/program";
+import { currentUser } from "@/lib/traening-users";
 import { sanitizeBody, sanitizeSession } from "@/lib/traening/logic";
 
 export const dynamic = "force-dynamic";
 
 const fail = (error: string, status: number) => NextResponse.json({ ok: false, error }, { status });
 
-/** GET /api/traening — alle pas og kropsmål. */
-export async function GET() {
-  if (!storeConfigured()) return NextResponse.json({ configured: false, sessions: [], body: [], next: null });
+const noAccess = () => fail("Linket virker ikke længere. Bed om et nyt.", 401);
+
+/** GET /api/traening — alle pas og kropsmål for den, der er logget ind. */
+export async function GET(req: NextRequest) {
+  if (!storeConfigured()) return NextResponse.json({ configured: false, sessions: [], body: [], next: null, me: { name: "Daniel", owner: true } });
   try {
-    return NextResponse.json({ configured: true, ...(await loadAll()) });
+    const user = await currentUser(req);
+    if (!user) return noAccess();
+    return NextResponse.json({ configured: true, me: { name: user.name, owner: !!user.owner }, ...(await loadAll(user.id)) });
   } catch (err) {
     console.error(err);
     return fail(err instanceof Error ? err.message : "Kunne ikke hente træningsloggen.", 502);
@@ -22,6 +27,8 @@ export async function GET() {
 /** POST /api/traening — { kind: "session", session } · { kind: "body", entry } · { kind: "next", dayId } (spring over). */
 export async function POST(req: NextRequest) {
   if (!storeConfigured()) return fail("Lageret er ikke koblet på.", 503);
+  const user = await currentUser(req);
+  if (!user) return noAccess();
   let body: { kind?: string; session?: unknown; entry?: unknown; dayId?: unknown };
   try {
     body = await req.json();
@@ -33,19 +40,19 @@ export async function POST(req: NextRequest) {
       const s = sanitizeSession(body.session);
       if (!s) return fail("Passet mangler dato eller sæt med gentagelser.", 422);
       const saved = { ...s, savedAt: new Date().toISOString() };
-      await saveSession(saved);
+      await saveSession(user.id, saved);
       return NextResponse.json({ ok: true, session: saved });
     }
     if (body.kind === "body") {
       const b = sanitizeBody(body.entry);
       if (!b) return fail("Skriv vægt og/eller livvidde.", 422);
-      await saveBody(b);
+      await saveBody(user.id, b);
       return NextResponse.json({ ok: true, entry: b });
     }
     if (body.kind === "next") {
       if (typeof body.dayId !== "string" || !DAYS.some((d) => d.id === body.dayId)) return fail("Ukendt pas.", 422);
       const next = { dayId: body.dayId, setAt: new Date().toISOString() };
-      await saveNext(next);
+      await saveNext(user.id, next);
       return NextResponse.json({ ok: true, next });
     }
     return fail("Ukendt kind.", 400);
@@ -58,10 +65,12 @@ export async function POST(req: NextRequest) {
 /** DELETE /api/traening?kind=session&id=… eller ?kind=body&date=… */
 export async function DELETE(req: NextRequest) {
   if (!storeConfigured()) return fail("Lageret er ikke koblet på.", 503);
+  const user = await currentUser(req);
+  if (!user) return noAccess();
   const p = req.nextUrl.searchParams;
   try {
-    if (p.get("kind") === "session" && p.get("id")) await deleteSession(p.get("id")!);
-    else if (p.get("kind") === "body" && p.get("date")) await deleteBody(p.get("date")!);
+    if (p.get("kind") === "session" && p.get("id")) await deleteSession(user.id, p.get("id")!);
+    else if (p.get("kind") === "body" && p.get("date")) await deleteBody(user.id, p.get("date")!);
     else return fail("Mangler kind og id/date.", 400);
     return NextResponse.json({ ok: true });
   } catch (err) {
