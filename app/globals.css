@@ -1179,3 +1179,81 @@ button.danger {
 .tr-program button:disabled:not([aria-checked="true"]) {
   opacity: 0.45;
 }
+
+/* Mit udstyr */
+.tr-equip-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  text-align: left;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.6rem 0.8rem;
+  font-weight: 400;
+  font-size: 0.9rem;
+}
+
+.tr-equip-edit {
+  color: var(--accent);
+  font-weight: 700;
+  flex: none;
+}
+
+.tr-equip-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.tr-equip-grid {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.tr-equip-chip {
+  display: grid;
+  grid-template-columns: 2rem 1fr 28px;
+  gap: 0.6rem;
+  align-items: center;
+  text-align: left;
+  background: var(--surface-2);
+  color: var(--text);
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  padding: 0.55rem 0.7rem;
+  font-weight: 400;
+}
+
+.tr-equip-chip .small {
+  display: block;
+}
+
+.tr-equip-chip.on {
+  border-color: var(--good);
+  background: color-mix(in srgb, var(--good) 9%, var(--surface));
+}
+
+.tr-equip-icon {
+  font-size: 1.4rem;
+  text-align: center;
+}
+
+.tr-equip-check {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  color: #fff;
+}
+
+.tr-equip-chip.on .tr-equip-check {
+  background: var(--good);
+  border-color: var(--good);
+}
