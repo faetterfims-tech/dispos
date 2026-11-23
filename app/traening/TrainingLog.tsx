@@ -41,6 +41,7 @@ import WarmupTimer from "./WarmupTimer";
 import SetTimer, { type Flow } from "./SetTimer";
 import { useBeeper } from "./device";
 import { AfterSaveModal, CompareModal, PhotosSection } from "./Photos";
+import { fmtRange, sessionCalories, type CalorieRange } from "@/lib/traening/calories";
 import { BODY_EVERY, COMPARE_EVERY, PHOTO_EVERY, daysBetween, isDue, pickComparison, type PhotoMeta } from "@/lib/traening/photos-core";
 import { fmtDuration, fmtMinutes, splitTime, type Interval } from "@/lib/traening/timing";
 
@@ -139,6 +140,12 @@ const equipOf = (data: { program?: ProgramId; equipment?: Equip[] | null } | nul
 /** Passene i programmet, der passer til udstyret, i den rækkefølge de tages. Der er ingen faste ugedage. */
 const orderOf = (data: { program?: ProgramId; equipment?: Equip[] | null } | null) => orderFor(programFor(equipOf(data)));
 
+/** Kropsvægt på en dato: seneste måling på eller før datoen, ellers den første. */
+const weightOn = (body: BodyEntry[], date: string): number | undefined => {
+  const ws = body.filter((b) => b.weightKg).sort((a, b) => a.date.localeCompare(b.date));
+  return [...ws].reverse().find((b) => b.date <= date)?.weightKg ?? ws[0]?.weightKg;
+};
+
 /** Til vægtforslag: seneste kropsvægt og profil. */
 const ctxOf = (data: { body?: BodyEntry[]; profile?: Profile | null } | null): LoadContext => {
   const w = [...(data?.body ?? [])].reverse().find((b) => b.weightKg)?.weightKg;
@@ -214,7 +221,7 @@ export default function TrainingLog() {
   /** Fremgangsbilleder (kun metadata; selve billederne hentes efter behov). */
   const [photos, setPhotos] = useState<PhotoMeta[]>([]);
   const [showCompare, setShowCompare] = useState(false);
-  const [afterSave, setAfterSave] = useState<{ bodyDue: boolean; photoDue: boolean } | null>(null);
+  const [afterSave, setAfterSave] = useState<{ bodyDue: boolean; photoDue: boolean; summary: { kcal: CalorieRange; sets: number; totalSec?: number; activeSec?: number } } | null>(null);
 
   // Hent billedlisten, og vis før/nu-sammenligningen en gang imellem.
   useEffect(() => {
@@ -348,7 +355,16 @@ export default function TrainingLog() {
       const lastPhoto = photos.length ? photos[photos.length - 1].date : null;
       const bodyDue = isDue(lastBody, today(), BODY_EVERY);
       const photoDue = next.configured && isDue(lastPhoto, today(), PHOTO_EVERY);
-      if (bodyDue || photoDue) setAfterSave({ bodyDue, photoDue });
+      setAfterSave({
+        bodyDue,
+        photoDue,
+        summary: {
+          kcal: sessionCalories(saved, weightOn(next.body, saved.date)),
+          sets: saved.exercises.reduce((n, e) => n + e.sets.length, 0),
+          totalSec: saved.time?.totalSec,
+          activeSec: saved.time?.activeSec,
+        },
+      });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Kunne ikke gemme.");
@@ -525,7 +541,7 @@ export default function TrainingLog() {
         />
       )}
       {tab === "krop" && <BodyTab body={data.body} onSave={saveBodyEntry} onDelete={removeBody} profile={data.profile ?? null} onProfile={saveProfile} />}
-      {tab === "historik" && <HistoryTab sessions={data.sessions} onDelete={removeSession} />}
+      {tab === "historik" && <HistoryTab sessions={data.sessions} body={data.body} onDelete={removeSession} />}
       {tab === "inviter" && owner && <InviteTab />}
 
       {showCompare && (
@@ -541,6 +557,7 @@ export default function TrainingLog() {
       )}
       {afterSave && (
         <AfterSaveModal
+          summary={afterSave.summary}
           bodyDue={afterSave.bodyDue}
           photoDue={afterSave.photoDue}
           photos={photos}
@@ -1262,6 +1279,18 @@ function ProgressTab({
   const week = weekStart(today());
   const perWeek = sessionsPerWeek(sessions);
   const thisWeek = perWeek.find((w) => w.week === week)?.count ?? 0;
+  const kcalWeeks = (() => {
+    const m = new Map<string, number>();
+    for (const s of sessions) {
+      const r = sessionCalories(s, weightOn(body, s.date));
+      m.set(weekStart(s.date), (m.get(weekStart(s.date)) ?? 0) + (r.low + r.high) / 2);
+    }
+    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-12).map(([date, value]) => ({ date, value: Math.round(value / 10) * 10 }));
+  })();
+  const weekKcal = sessions
+    .filter((s) => weekStart(s.date) === week)
+    .map((s) => sessionCalories(s, weightOn(body, s.date)))
+    .reduce((a, r) => ({ low: a.low + r.low, high: a.high + r.high }), { low: 0, high: 0 });
   const weights = body.filter((b) => b.weightKg);
   const waists = body.filter((b) => b.waistCm);
   const dW = weights.length > 1 ? weights[weights.length - 1].weightKg! - weights[0].weightKg! : null;
@@ -1282,6 +1311,10 @@ function ProgressTab({
           <div className="value">{sessions.length}</div>
           <div className="label">Træninger i alt</div>
         </div>
+        <div className="card kpi" style={{ gridColumn: "1 / -1" }}>
+          <div className="value">{weekKcal.high ? `🔥 ${weekKcal.low.toLocaleString("da-DK")}–${weekKcal.high.toLocaleString("da-DK")}` : "–"}</div>
+          <div className="label">kcal forbrændt ved træning denne uge (skøn)</div>
+        </div>
         <div className="card kpi">
           <div className="value">{dW === null ? "–" : signed(dW, "kg")}</div>
           <div className="label">Vægt siden start</div>
@@ -1291,6 +1324,16 @@ function ProgressTab({
           <div className="label">Om maven siden start</div>
         </div>
       </div>
+
+      {kcalWeeks.length > 1 && (
+        <div className="card">
+          <h2>🔥 Forbrænding pr. uge</h2>
+          <p className="small" style={{ marginTop: 0 }}>
+            Skøn ud fra dine sæt, pauser og opvarmning (midten af intervallet). Spildtid tæller ikke med.
+          </p>
+          <LineChart points={kcalWeeks} unit="kcal" color="var(--series-3, #e2662b)" />
+        </div>
+      )}
 
       {photos && <PhotosSection photos={photos} body={body} onAdded={onPhotoAdded} onDeleted={onPhotoDeleted} />}
 
@@ -1463,7 +1506,7 @@ function BodyTab({
 
 /* ---------- Tidligere træninger ---------- */
 
-export function HistoryTab({ sessions, onDelete }: { sessions: Session[]; onDelete: (id: string) => void }) {
+export function HistoryTab({ sessions, body = [], onDelete }: { sessions: Session[]; body?: BodyEntry[]; onDelete: (id: string) => void }) {
   if (!sessions.length) return <p className="muted">Ingen træninger endnu. Gå til “Træn”, og gem din første.</p>;
   const sorted = [...sessions].sort((a, b) => b.date.localeCompare(a.date) || (b.savedAt ?? "").localeCompare(a.savedAt ?? ""));
   return (
@@ -1471,6 +1514,7 @@ export function HistoryTab({ sessions, onDelete }: { sessions: Session[]; onDele
       {sorted.map((s) => {
         const day: Day | undefined = dayById(s.dayId);
         const vol = volume(s, (id) => exerciseById(id)?.unit);
+        const kcal = sessionCalories(s, weightOn(body, s.date));
         return (
           <details key={s.id} className="card tr-hist" style={{ "--c": day?.color ?? "var(--accent)" } as CSSProperties}>
             <summary>
@@ -1480,6 +1524,7 @@ export function HistoryTab({ sessions, onDelete }: { sessions: Session[]; onDele
                 <span className="small">
                   {fmtDate(s.date)} · {s.exercises.length} {s.exercises.length === 1 ? "øvelse" : "øvelser"}
                   {vol ? ` · ${vol.toLocaleString("da-DK")} kg løftet i alt` : ""}
+                  {` · 🔥 ${fmtRange(kcal)}`}
                 </span>
               </span>
             </summary>
