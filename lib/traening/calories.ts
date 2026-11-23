@@ -1,35 +1,40 @@
 /**
- * Kalorieforbrug pr. træning — et ærligt interval, ikke ét præcist tal.
+ * Kalorieforbrug pr. træning — et ærligt interval, ud fra den træning, der faktisk er lavet.
  *
- * Bygger på 2024 Adult Compendium of Physical Activities (MET-værdier):
- *   kcal ≈ MET × kropsvægt (kg) × timer
- * MET-værdierne gælder for hele træningstiden inkl. pauser. Tallet er brutto,
- * dvs. inklusive de ca. 1 kcal/kg/time, kroppen bruger i hvile alligevel.
+ * Kun aktiv træning tæller: tiden i sættene, pauserne mellem dem (højst den foreskrevne pause)
+ * og opvarmningen. Spildtid tæller ikke med.
  *
- *   02054  3,5  Styrketræning, flere øvelser, 8–15 gentagelser
- *   02052  5,0  Styrketræning, squat, dødløft m.m., moderat
- *   02055  5,8  Styrketræning i supersæt/kredsløb (korte pauser)
- *   02056  3,0  Kropsvægtsøvelser (squat, udfald, armbøjninger), generelt
- *   02022  3,8  Kropsvægtsøvelser, moderat
- *   02020  7,5  Kropsvægt hårdt (burpees, sprællemænd)
- *   01305  8,8  Intervaltræning (HIIT)
- *   02024  2,8  Planke, mavebøjninger, let (opvarmningen)
+ *   kcal ≈ MET × kropsvægt (kg) × timer   (brutto, inkl. hvileforbrænding)
+ *
+ * MET i selve sættet (2024 Adult Compendium of Physical Activities):
+ *   Vægte:        5,0 (02052, squat/dødløft moderat) – 6,0 (02050, styrketræning hårdt)
+ *   Kropsvægt:    3,8 (02022, armbøjninger/udfald moderat) – 6,5 (02057, kropsvægt høj intensitet)
+ *   Mave/planke:  2,8 (02024, planke/mavebøjninger let) – 3,8 (02022)
+ *   Bjergbestiger og intervaller i arbejdstiden: 7,5 (02020, burpees m.m. hårdt) – 8,8 (01305, HIIT)
+ *   Opvarmning:   2,8 – 3,5 (02030, rygøvelser op og ned fra gulvet)
+ *   Pauser:       1,5 – 2,0 (antagelse: stå/gå roligt)
  */
-import { dayById } from "./program";
+import { dayById, exerciseById, type Exercise } from "./program";
 import type { Session } from "./logic";
+import { restFor, tempoFor } from "./timing";
 
 export type WorkoutKind = "vaegte" | "kropsvaegt" | "kondition";
 
-const MET = {
-  vaegte: { low: 3.5, high: 5.0, dense: 5.8 },
-  kropsvaegt: { low: 3.0, high: 3.8, dense: 5.0 },
-  hiitWork: { low: 7.5, high: 8.8 },
-  hiitRest: 2.0,
-  opvarmning: 2.8,
-};
-
 /** Antaget kropsvægt, hvis den ikke er skrevet ind. */
 export const DEFAULT_BODY_KG = 75;
+
+const CORE = new Set(["planke", "sideplanke", "deadbug"]);
+const VIGOROUS = new Set(["bjergbestiger", "intervaller"]);
+
+/** MET i selve arbejdet for en øvelse. */
+export function workMet(ex: Exercise): { low: number; high: number } {
+  if (VIGOROUS.has(ex.id)) return { low: 7.5, high: 8.8 };
+  if (CORE.has(ex.id)) return { low: 2.8, high: 3.8 };
+  if (ex.unit === "kg") return { low: 5.0, high: 6.0 };
+  return { low: 3.8, high: 6.5 };
+}
+const REST_MET = { low: 1.5, high: 2.0 };
+const WARMUP_MET = { low: 2.8, high: 3.5 };
 
 export function kindOf(dayId: string): WorkoutKind {
   const d = dayById(dayId);
@@ -37,15 +42,22 @@ export function kindOf(dayId: string): WorkoutKind {
   return d.program === "udstyr" ? "vaegte" : "kropsvaegt";
 }
 
+/** Sekunder i arbejde for ét sæt: målt tid, ellers ud fra antal og rytme. */
+export function setWorkSec(ex: Exercise, set: { reps: number; sec?: number }): number {
+  if (ex.unit === "runder") return set.reps * 30; // 30 sek hårdt pr. runde
+  if (set.sec && set.sec > 0) return set.sec;
+  if (ex.unit === "sek") return set.reps;
+  const cycle = (tempoFor(ex) ?? [{ sec: 3 }]).reduce((a, p) => a + p.sec, 0);
+  return set.reps * cycle;
+}
+
 export interface CalorieInput {
-  kind: WorkoutKind;
   bodyKg?: number;
-  /** Samlet tid i sekunder (fra start til gem). */
-  totalSec: number;
-  /** Aktiv tid (i sæt) i sekunder, hvis kendt. */
-  activeSec?: number;
-  /** Intervaller: antal runder à 30 sek hårdt / 30 sek pause. */
-  rounds?: number;
+  exercises: { ex: Exercise; sets: { reps: number; sec?: number }[] }[];
+  /** Pauser mellem sæt i sekunder (målt). Mangler: den foreskrevne pause pr. sæt. */
+  restSec?: number;
+  /** Opvarmning i sekunder (målt med timeren). */
+  warmupSec?: number;
 }
 
 export interface CalorieRange {
@@ -59,41 +71,38 @@ const round10 = (n: number) => Math.max(0, Math.round(n / 10) * 10);
 
 export function estimateCalories(input: CalorieInput): CalorieRange {
   const kg = input.bodyKg && input.bodyKg > 30 ? input.bodyKg : DEFAULT_BODY_KG;
-  const h = Math.max(0, input.totalSec) / 3600;
-  let low: number;
-  let high: number;
-
-  if (input.kind === "kondition") {
-    const work = ((input.rounds ?? 0) * 30) / 3600;
-    const rest = ((input.rounds ?? 0) * 30) / 3600;
-    const other = Math.max(0, h - work - rest); // opvarmning, nedkøling, gåtur
-    low = (MET.hiitWork.low * work + MET.hiitRest * rest + 3.0 * other) * kg;
-    high = (MET.hiitWork.high * work + MET.hiitRest * rest + 3.5 * other) * kg;
-  } else {
-    const m = MET[input.kind];
-    // Tæt træning (meget aktiv tid i forhold til total) løfter den øvre grænse mod kredsløbs-niveau.
-    const density = input.activeSec && input.totalSec > 0 ? Math.min(1, input.activeSec / input.totalSec) : 0;
-    const top = density >= 0.4 ? m.dense : m.high + (m.dense - m.high) * Math.max(0, (density - 0.2) / 0.2);
-    low = m.low * kg * h;
-    high = top * kg * h;
+  let low = 0;
+  let high = 0;
+  let guessedRest = 0;
+  for (const { ex, sets } of input.exercises) {
+    const m = workMet(ex);
+    for (const s of sets) {
+      const h = setWorkSec(ex, s) / 3600;
+      low += m.low * kg * h;
+      high += m.high * kg * h;
+    }
+    // Intervaller: 30 sek pause pr. runde. Andre: den foreskrevne pause mellem sættene.
+    guessedRest += ex.unit === "runder" ? sets.reduce((a, s) => a + s.reps * 30, 0) : Math.max(0, sets.length - 1) * restFor(ex);
   }
+  const restH = (input.restSec ?? guessedRest) / 3600;
+  const warmH = (input.warmupSec ?? 0) / 3600;
+  low += (REST_MET.low * restH + WARMUP_MET.low * warmH) * kg;
+  high += (REST_MET.high * restH + WARMUP_MET.high * warmH) * kg;
   return { low: round10(low), high: round10(Math.max(high, low)), guessedWeight: !(input.bodyKg && input.bodyKg > 30) };
 }
 
-/** Skøn over tid for et pas uden ur: ca. 45 sek pr. sæt + pause, plus 7 min opvarmning. */
-function guessTotalSec(s: Session): number {
-  const sets = s.exercises.reduce((n, e) => n + e.sets.length, 0);
-  return sets * (45 + 90) + 7 * 60;
-}
-
 export function sessionCalories(s: Session, bodyKg?: number): CalorieRange {
-  const kind = kindOf(s.dayId);
-  if (kind === "kondition") {
-    const rounds = s.exercises.find((e) => e.id === "intervaller")?.sets.reduce((n, x) => n + x.reps, 0) ?? 0;
-    const totalSec = s.time?.totalSec ?? rounds * 60 + 10 * 60;
-    return estimateCalories({ kind, bodyKg, totalSec, rounds });
+  const exercises = s.exercises.flatMap((e) => {
+    const ex = exerciseById(e.id);
+    return ex ? [{ ex, sets: e.sets }] : [];
+  });
+  // Med ur: opvarmning = aktiv tid, der ikke er sæt (opvarmningstimeren).
+  let warmupSec: number | undefined;
+  if (s.time) {
+    const setSec = exercises.reduce((a, { ex, sets }) => a + sets.reduce((b, x) => b + (x.sec ?? 0), 0) * (ex.unit === "runder" ? 0 : 1), 0);
+    warmupSec = Math.max(0, s.time.activeSec - setSec);
   }
-  return estimateCalories({ kind, bodyKg, totalSec: s.time?.totalSec ?? guessTotalSec(s), activeSec: s.time?.activeSec });
+  return estimateCalories({ bodyKg, exercises, restSec: s.time?.restSec, warmupSec });
 }
 
 export const fmtRange = (r: { low: number; high: number }) =>

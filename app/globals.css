@@ -1598,3 +1598,27 @@ button.danger {
 .tr-due button {
   flex: none;
 }
+
+.tr-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 0.5rem;
+}
+
+.tr-summary div {
+  background: var(--surface-2);
+  border-radius: 12px;
+  padding: 0.6rem 0.5rem;
+  text-align: center;
+}
+
+.tr-summary b {
+  display: block;
+  font-size: 1.15rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.tr-summary span {
+  font-size: 0.75rem;
+  color: var(--text-2);
+}

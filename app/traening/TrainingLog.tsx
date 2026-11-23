@@ -41,7 +41,7 @@ import WarmupTimer from "./WarmupTimer";
 import SetTimer, { type Flow } from "./SetTimer";
 import { useBeeper } from "./device";
 import { AfterSaveModal, CompareModal, PhotosSection } from "./Photos";
-import { estimateCalories, fmtRange, kindOf, sessionCalories } from "@/lib/traening/calories";
+import { fmtRange, sessionCalories, type CalorieRange } from "@/lib/traening/calories";
 import { BODY_EVERY, COMPARE_EVERY, PHOTO_EVERY, daysBetween, isDue, pickComparison, type PhotoMeta } from "@/lib/traening/photos-core";
 import { fmtDuration, fmtMinutes, splitTime, type Interval } from "@/lib/traening/timing";
 
@@ -221,7 +221,7 @@ export default function TrainingLog() {
   /** Fremgangsbilleder (kun metadata; selve billederne hentes efter behov). */
   const [photos, setPhotos] = useState<PhotoMeta[]>([]);
   const [showCompare, setShowCompare] = useState(false);
-  const [afterSave, setAfterSave] = useState<{ bodyDue: boolean; photoDue: boolean } | null>(null);
+  const [afterSave, setAfterSave] = useState<{ bodyDue: boolean; photoDue: boolean; summary: { kcal: CalorieRange; sets: number; totalSec?: number; activeSec?: number } } | null>(null);
 
   // Hent billedlisten, og vis før/nu-sammenligningen en gang imellem.
   useEffect(() => {
@@ -355,7 +355,16 @@ export default function TrainingLog() {
       const lastPhoto = photos.length ? photos[photos.length - 1].date : null;
       const bodyDue = isDue(lastBody, today(), BODY_EVERY);
       const photoDue = next.configured && isDue(lastPhoto, today(), PHOTO_EVERY);
-      if (bodyDue || photoDue) setAfterSave({ bodyDue, photoDue });
+      setAfterSave({
+        bodyDue,
+        photoDue,
+        summary: {
+          kcal: sessionCalories(saved, weightOn(next.body, saved.date)),
+          sets: saved.exercises.reduce((n, e) => n + e.sets.length, 0),
+          totalSec: saved.time?.totalSec,
+          activeSec: saved.time?.activeSec,
+        },
+      });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Kunne ikke gemme.");
@@ -548,6 +557,7 @@ export default function TrainingLog() {
       )}
       {afterSave && (
         <AfterSaveModal
+          summary={afterSave.summary}
           bodyDue={afterSave.bodyDue}
           photoDue={afterSave.photoDue}
           photos={photos}
@@ -811,21 +821,7 @@ export function TrainTab({
         )}
         {workout && split && (
           <div className="tr-clock">
-            <div>
-              <div className="tr-clock-big">⏱ {fmtDuration(split.totalSec)}</div>
-              <div className="tr-hero-meta">
-                🔥{" "}
-                {fmtRange(
-                  estimateCalories({
-                    kind: kindOf(day.id),
-                    bodyKg: loadCtx.bodyKg,
-                    totalSec: split.totalSec,
-                    activeSec: split.activeSec,
-                    rounds: (draft.sets.intervaller ?? []).filter((r) => r.done).reduce((n, r) => n + (Number(r.reps) || 0), 0),
-                  }),
-                )}
-              </div>
-            </div>
+            <div className="tr-clock-big">⏱ {fmtDuration(split.totalSec)}</div>
             {doneSets === 0 && (
               <button className="tr-link tr-link-light" onClick={cancelWorkout}>
                 Fortryd start
@@ -1283,6 +1279,14 @@ function ProgressTab({
   const week = weekStart(today());
   const perWeek = sessionsPerWeek(sessions);
   const thisWeek = perWeek.find((w) => w.week === week)?.count ?? 0;
+  const kcalWeeks = (() => {
+    const m = new Map<string, number>();
+    for (const s of sessions) {
+      const r = sessionCalories(s, weightOn(body, s.date));
+      m.set(weekStart(s.date), (m.get(weekStart(s.date)) ?? 0) + (r.low + r.high) / 2);
+    }
+    return [...m.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-12).map(([date, value]) => ({ date, value: Math.round(value / 10) * 10 }));
+  })();
   const weekKcal = sessions
     .filter((s) => weekStart(s.date) === week)
     .map((s) => sessionCalories(s, weightOn(body, s.date)))
@@ -1320,6 +1324,16 @@ function ProgressTab({
           <div className="label">Om maven siden start</div>
         </div>
       </div>
+
+      {kcalWeeks.length > 1 && (
+        <div className="card">
+          <h2>🔥 Forbrænding pr. uge</h2>
+          <p className="small" style={{ marginTop: 0 }}>
+            Skøn ud fra dine sæt, pauser og opvarmning (midten af intervallet). Spildtid tæller ikke med.
+          </p>
+          <LineChart points={kcalWeeks} unit="kcal" color="var(--series-3, #e2662b)" />
+        </div>
+      )}
 
       {photos && <PhotosSection photos={photos} body={body} onAdded={onPhotoAdded} onDeleted={onPhotoDeleted} />}
 

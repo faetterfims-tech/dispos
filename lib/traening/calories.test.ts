@@ -1,6 +1,9 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { estimateCalories, kindOf, sessionCalories } from "./calories";
+import { exerciseById } from "./program";
+import { estimateCalories, kindOf, sessionCalories, setWorkSec } from "./calories";
+
+const ex = (id: string) => exerciseById(id)!;
 
 test("type pr. pas", () => {
   assert.equal(kindOf("overkrop-a"), "vaegte");
@@ -8,27 +11,40 @@ test("type pr. pas", () => {
   assert.equal(kindOf("interval"), "kondition");
 });
 
-test("styrketræning: 85 kg, 50 min → ca. 250–350 kcal", () => {
-  const r = estimateCalories({ kind: "vaegte", bodyKg: 85, totalSec: 50 * 60, activeSec: 10 * 60 });
-  assert.deepEqual([r.low, r.high], [250, 350]);
-  assert.equal(r.guessedWeight, false);
+test("arbejdstid pr. sæt: målt, ellers antal × rytme", () => {
+  assert.equal(setWorkSec(ex("goblet"), { reps: 10 }), 30);
+  assert.equal(setWorkSec(ex("goblet"), { reps: 10, sec: 42 }), 42);
+  assert.equal(setWorkSec(ex("hoftehaev"), { reps: 12 }), 60);
+  assert.equal(setWorkSec(ex("planke"), { reps: 40 }), 40);
+  assert.equal(setWorkSec(ex("intervaller"), { reps: 12 }), 360);
 });
 
-test("tæt træning løfter den øvre grænse", () => {
-  const loose = estimateCalories({ kind: "vaegte", bodyKg: 85, totalSec: 3000, activeSec: 300 });
-  const dense = estimateCalories({ kind: "vaegte", bodyKg: 85, totalSec: 3000, activeSec: 1500 });
-  assert.ok(dense.high > loose.high);
-  assert.equal(dense.low, loose.low);
+test("flere sæt giver flere kalorier; spildtid tæller ikke", () => {
+  const sets = (n: number) => Array.from({ length: n }, () => ({ reps: 10 }));
+  const two = estimateCalories({ bodyKg: 85, exercises: [{ ex: ex("goblet"), sets: sets(2) }] });
+  const four = estimateCalories({ bodyKg: 85, exercises: [{ ex: ex("goblet"), sets: sets(4) }] });
+  assert.ok(four.high > two.high);
 });
 
-test("intervaller: 12 runder + 10 min op/nedvarmning", () => {
-  const r = estimateCalories({ kind: "kondition", bodyKg: 85, totalSec: 22 * 60, rounds: 12 });
-  assert.ok(r.low >= 120 && r.high <= 260, `${r.low}-${r.high}`);
+test("et helt styrkepas (85 kg, 5 øvelser × 4 sæt, målt pause 25 min, 7 min opvarmning) giver et fornuftigt niveau", () => {
+  const ids = ["armstraek", "roning", "skulderpres", "pullups", "curl"];
+  const r = estimateCalories({
+    bodyKg: 85,
+    exercises: ids.map((id) => ({ ex: ex(id), sets: Array.from({ length: 4 }, () => ({ reps: 10, sec: 35 })) })),
+    restSec: 25 * 60,
+    warmupSec: 7 * 60,
+  });
+  assert.ok(r.low >= 100 && r.high <= 300, `${r.low}-${r.high}`);
 });
 
-test("pas uden ur bliver skønnet ud fra sæt", () => {
-  const s = { id: "x", date: "2026-11-23", dayId: "overkrop-a", exercises: [{ id: "roning", sets: [{ kg: 8, reps: 10 }, { kg: 8, reps: 10 }, { kg: 8, reps: 10 }] }] };
-  const r = sessionCalories(s, 85);
-  assert.ok(r.low > 0 && r.high >= r.low);
+test("pas med ur: opvarmning udledes, pause fra målingen", () => {
+  const s = {
+    id: "x", date: "2026-11-23", dayId: "overkrop-a",
+    exercises: [{ id: "roning", sets: [{ kg: 8, reps: 10, sec: 40 }, { kg: 8, reps: 10, sec: 40 }] }],
+    time: { startedAt: "", endedAt: "", totalSec: 3600, activeSec: 80 + 420, restSec: 180, idleSec: 2920 },
+  };
+  const withIdle = sessionCalories(s, 85);
+  const noIdle = sessionCalories({ ...s, time: { ...s.time, totalSec: 680, idleSec: 0 } }, 85);
+  assert.deepEqual(withIdle, noIdle); // 48 min spild ændrer intet
   assert.ok(sessionCalories(s).guessedWeight);
 });

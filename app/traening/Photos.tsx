@@ -267,6 +267,7 @@ export function CompareModal({ photos, body, onClose, onSeeAll }: { photos: Phot
 
 /** Efter en gemt træning: mind om vægt, mål og billede, når det er tid. */
 export function AfterSaveModal({
+  summary,
   bodyDue,
   photoDue,
   photos,
@@ -276,6 +277,7 @@ export function AfterSaveModal({
   onPhotoAdded,
   onClose,
 }: {
+  summary: { kcal: { low: number; high: number }; sets: number; totalSec?: number; activeSec?: number };
   bodyDue: boolean;
   photoDue: boolean;
   photos: PhotoMeta[];
@@ -307,9 +309,29 @@ export function AfterSaveModal({
   return (
     <Modal onClose={onClose}>
       <h2 style={{ marginTop: 0 }}>Godt gået! 💪</h2>
-      <p className="small" style={{ marginTop: 0 }}>
-        Træningen er gemt. Det er tid til at følge op:
-      </p>
+      <div className="tr-summary">
+        <div>
+          <b>{summary.sets}</b>
+          <span>sæt</span>
+        </div>
+        {summary.totalSec ? (
+          <div>
+            <b>{Math.round(summary.totalSec / 60)} min</b>
+            <span>i alt{summary.activeSec ? ` · ${Math.round(summary.activeSec / 60)} aktiv` : ""}</span>
+          </div>
+        ) : null}
+        <div>
+          <b>
+            🔥 {summary.kcal.low}–{summary.kcal.high}
+          </b>
+          <span>kcal (skøn)</span>
+        </div>
+      </div>
+      {(bodyDue || photoDue) && (
+        <p className="small" style={{ margin: "0.8rem 0 0" }}>
+          Det er tid til at følge op:
+        </p>
+      )}
       {bodyDue && (
         <div className="tr-due">
           <div>
@@ -336,7 +358,7 @@ export function AfterSaveModal({
       {err && <div className="notice error">{err}</div>}
       <div className="tr-modal-buttons">
         <button className="secondary" onClick={onClose}>
-          {done ? "Luk" : "Ikke nu"}
+          {done || (!bodyDue && !photoDue) ? "Luk" : "Ikke nu"}
         </button>
       </div>
     </Modal>
