@@ -19,7 +19,12 @@ import {
   type Exercise,
   type ProgramId,
   type Unit,
+  CARDIO_CHOICES,
+  isCardioDay,
+  withActivity,
 } from "@/lib/traening/program";
+import { TourCard } from "./Cardio";
+import { fmtKm, fmtKmh, isCardio, kmhOf } from "@/lib/traening/cardio";
 import {
   fmtKg,
   lastLog,
@@ -60,6 +65,8 @@ interface SetDraft {
   auto?: boolean;
   /** Testresultat, som resten allerede er beregnet ud fra ("kg×antal"). */
   applied?: string;
+  /** Tur: teksten i minut-feltet. */
+  min?: string;
 }
 interface WorkoutInterval extends Interval {
   kind: "set" | "opvarmning";
@@ -76,6 +83,8 @@ interface Draft {
   warmup?: boolean[];
   workout?: Workout;
   note: string;
+  /** Konditionspas: intervaller, gåtur eller løbetur. */
+  activity?: string;
 }
 interface Data {
   configured: boolean;
@@ -130,7 +139,7 @@ const addDays = (d: string, n: number) => {
 const SET_COUNTDOWN_MS = 5000;
 
 /** Overskrift på tal-feltet. */
-const COUNT_LABEL: Record<Unit, string> = { kg: "antal", reps: "antal", sek: "sekunder", runder: "runder" };
+const COUNT_LABEL: Record<Unit, string> = { kg: "antal", reps: "antal", sek: "sekunder", runder: "runder", km: "km" };
 const WEEKDAYS = ["Man", "Tir", "Ons", "Tor", "Fre", "Lør", "Søn"];
 
 /** Personens udstyr (eller et fornuftigt gæt, hvis det ikke er valgt endnu). */
@@ -178,30 +187,45 @@ function applyTests(d: Draft, exercises: Exercise[]): Draft {
   return changed ? { ...d, sets } : d;
 }
 
-/** Et pas tilpasset udstyret. */
-const dayFor = (id: string, equip: Equip[]) => {
+/** Et pas tilpasset udstyret (og for konditionspas: den valgte aktivitet). */
+const dayFor = (id: string, equip: Equip[], activity?: string) => {
   const d = dayById(id);
-  return d ? resolveDay(d, equip) : undefined;
+  return d ? withActivity(resolveDay(d, equip), activity) : undefined;
 };
 
-function buildDraft(date: string, dayId: string, sessions: Session[], equip: Equip[], ctx: LoadContext = {}): Draft {
-  const day = dayFor(dayId, equip) ?? resolveDay(DAYS[0], equip);
-  const sets: Record<string, SetDraft[]> = {};
-  for (const ex of day.exercises) {
-    const last = lastLog(sessions, ex.id, date);
-    const sug = suggest(ex, last?.log ?? null, ctx);
-    sets[ex.id] = sug.sets.map((s, i) => ({
-      kg: ex.unit === "kg" && s.kg ? fmtKg(s.kg) : "",
-      reps: s.reps ? String(s.reps) : "",
-      done: false,
-      auto: true,
-      ...(sug.test && i === 0 ? { test: true } : {}),
-    }));
-  }
-  return { date, dayId: day.id, sets, warmup: RYG_OPVARMNING.map(() => false), note: "" };
+/** Den aktivitet, der sidst blev valgt til et konditionspas. */
+const lastActivity = (sessions: Session[]): string | undefined => {
+  const ids = CARDIO_CHOICES.map((c) => c.id);
+  const s = [...sessions]
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.savedAt ?? "").localeCompare(a.savedAt ?? ""))
+    .find((x) => x.exercises.some((e) => ids.includes(e.id)));
+  return s?.exercises.find((e) => ids.includes(e.id))?.id;
+};
+
+/** Felterne for en øvelse ud fra sidste gang. */
+function rowsFor(ex: Exercise, sessions: Session[], date: string, ctx: LoadContext): SetDraft[] {
+  if (ex.unit === "km") return [{ kg: "", reps: "", done: false }];
+  const last = lastLog(sessions, ex.id, date);
+  const sug = suggest(ex, last?.log ?? null, ctx);
+  return sug.sets.map((s, i) => ({
+    kg: ex.unit === "kg" && s.kg ? fmtKg(s.kg) : "",
+    reps: s.reps ? String(s.reps) : "",
+    done: false,
+    auto: true,
+    ...(sug.test && i === 0 ? { test: true } : {}),
+  }));
 }
 
-function fmtSets(ex: Exercise | undefined, sets: { kg: number; reps: number }[]) {
+function buildDraft(date: string, dayId: string, sessions: Session[], equip: Equip[], ctx: LoadContext = {}, activity = lastActivity(sessions)): Draft {
+  const day = dayFor(dayId, equip, activity) ?? resolveDay(DAYS[0], equip);
+  const sets: Record<string, SetDraft[]> = {};
+  for (const ex of day.exercises) sets[ex.id] = rowsFor(ex, sessions, date, ctx);
+  return { date, dayId: day.id, sets, warmup: RYG_OPVARMNING.map(() => false), note: "", ...(activity && isCardioDay(day) ? { activity } : {}) };
+}
+
+function fmtSets(ex: Exercise | undefined, sets: { kg: number; reps: number; sec?: number }[]) {
+  if (ex?.unit === "km")
+    return sets.map((s) => `${fmtKm(s.reps)} km${s.sec ? ` på ${Math.round(s.sec / 60)} min (${fmtKmh(kmhOf(s.reps, s.sec))} km/t)` : ""}`).join(" · ");
   if (!ex) return sets.map((s) => `${s.kg} kg × ${s.reps}`).join(" · ");
   if (ex.unit === "kg") return sets.map((s) => `${fmtKg(s.kg)} kg × ${s.reps}`).join(" · ");
   if (ex.unit === "reps") return sets.map((s) => (s.kg ? `${s.reps} (+${fmtKg(s.kg)} kg)` : `${s.reps}`)).join(" · ") + " gange";
@@ -275,7 +299,7 @@ export default function TrainingLog() {
     if (!data || draft) return;
     const saved = load<Draft>(STORAGE.draft);
     const fits = (d: Draft) => {
-      const day = dayFor(d.dayId, equipOf(data));
+      const day = dayFor(d.dayId, equipOf(data), d.activity);
       return !!day && day.exercises.every((ex) => d.sets[ex.id]);
     };
     if (saved && saved.date === today() && fits(saved)) setDraft(saved);
@@ -311,7 +335,7 @@ export default function TrainingLog() {
 
   async function saveSession() {
     if (!draft || !data) return;
-    const day = dayFor(draft.dayId, equipOf(data));
+    const day = dayFor(draft.dayId, equipOf(data), draft.activity);
     if (!day) return;
     const session: Session = {
       id: newId(),
@@ -363,6 +387,10 @@ export default function TrainingLog() {
           sets: saved.exercises.reduce((n, e) => n + e.sets.length, 0),
           totalSec: saved.time?.totalSec,
           activeSec: saved.time?.activeSec,
+          ...(() => {
+            const t = saved.exercises.find((e) => isCardio(e.id))?.sets[0];
+            return t ? { tour: { km: t.reps, sec: t.sec } } : {};
+          })(),
         },
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -665,7 +693,9 @@ export function TrainTab({
   equipmentChosen: boolean;
   onEquipment: (e: Equip[]) => void;
 }) {
-  const day = dayFor(draft.dayId, equipment) ?? resolveDay(DAYS[0], equipment);
+  const day = dayFor(draft.dayId, equipment, draft.activity) ?? resolveDay(DAYS[0], equipment);
+  const baseDay = dayById(draft.dayId);
+  const canChoose = !!baseDay && isCardioDay(baseDay);
   const nextDay = dayById(nextInOrder(day.id, order));
   const total = day.exercises.reduce((n, ex) => n + (draft.sets[ex.id]?.length ?? 0), 0);
   const doneSets = day.exercises.reduce((n, ex) => n + (draft.sets[ex.id]?.filter((s) => s.done).length ?? 0), 0);
@@ -690,8 +720,10 @@ export function TrainTab({
 
   const isToday = draft.date === today();
   const workout = draft.workout;
+  /** Gåtur/løbetur: ingen sæt — turen startes på kortet. */
+  const isTour = day.exercises.some((e) => e.unit === "km");
   /** I dag: felterne er låst, til man trykker Start. Efterregistrering er altid åben. */
-  const locked = isToday && !workout;
+  const locked = isToday && !workout && !isTour;
 
   // Uret tikker hvert sekund, mens træningen kører.
   const [, setTick] = useState(0);
@@ -745,6 +777,30 @@ export function TrainTab({
       return { ...d, sets: { ...d.sets, [exId]: rows }, workout: d.workout ? { ...d.workout, intervals } : d.workout };
     });
   const finishSet = () => update((d) => closeRunning(d, Date.now()));
+
+  /** Vælg intervaller, gåtur eller løbetur til konditionspasset. */
+  const chooseActivity = (id: string) =>
+    update((d) => {
+      const ex = exerciseById(id);
+      if (!ex) return d;
+      return { ...d, activity: id, sets: d.sets[id] ? d.sets : { ...d.sets, [id]: rowsFor(ex, sessions, d.date, loadCtx) } };
+    });
+  /** Afslut en tur: gem distance og tid, og luk tidsperioden. Uden GPS-distance skrives den selv. */
+  const finishTour = (exId: string, km: number, sec: number) =>
+    update((d) => {
+      const now = Date.now();
+      const rows = [...(d.sets[exId] ?? [{ kg: "", reps: "" }])];
+      rows[0] = { ...rows[0], startedAt: undefined, min: undefined, sec, ...(km >= 0.01 ? { reps: String(km).replace(".", ","), done: true } : { done: false }) };
+      const intervals = (d.workout?.intervals ?? []).map((iv) => (iv.kind === "set" && iv.end === undefined ? { ...iv, end: now } : iv));
+      return { ...d, sets: { ...d.sets, [exId]: rows }, workout: d.workout ? { ...d.workout, intervals } : d.workout };
+    });
+  const cancelTour = (exId: string) =>
+    update((d) => {
+      const rows = [...(d.sets[exId] ?? [])];
+      if (rows[0]) rows[0] = { ...rows[0], startedAt: undefined };
+      const intervals = (d.workout?.intervals ?? []).filter((iv) => !(iv.kind === "set" && iv.end === undefined));
+      return { ...d, sets: { ...d.sets, [exId]: rows }, workout: d.workout ? { ...d.workout, intervals } : d.workout };
+    });
   const undoSet = (exId: string, i: number) =>
     update((d) => {
       const rows = [...(d.sets[exId] ?? [])];
@@ -806,7 +862,7 @@ export function TrainTab({
         <div className="tr-hero-date">{isToday ? (workout ? "I gang" : "Dit næste pas") : `Efterregistrering · ${fmtLong(draft.date)}`}</div>
         <div className="tr-hero-title">{day.name}</div>
         <div className="tr-hero-meta">
-          {day.exercises.length === 1 ? "1 øvelse" : `${day.exercises.length} øvelser`} · {day.minutes}
+          {isTour ? "30–60 min" : `${day.exercises.length === 1 ? "1 øvelse" : `${day.exercises.length} øvelser`} · ${day.minutes}`}
         </div>
         <div className="tr-progress" aria-label={`${doneSets} af ${total} sæt lavet`}>
           <div style={{ width: `${total ? (doneSets / total) * 100 : 0}%` }} />
@@ -822,7 +878,7 @@ export function TrainTab({
         {workout && split && (
           <div className="tr-clock">
             <div className="tr-clock-big">⏱ {fmtDuration(split.totalSec)}</div>
-            {doneSets === 0 && (
+            {doneSets === 0 && !isTour && (
               <button className="tr-link tr-link-light" onClick={cancelWorkout}>
                 Fortryd start
               </button>
@@ -847,6 +903,24 @@ export function TrainTab({
         </select>
       </div>
 
+      {canChoose && (
+        <div className="card">
+          <strong>Hvad vil du lave i dag?</strong>
+          <div className="tr-activity" style={{ "--c": day.color, marginTop: "0.6rem" } as CSSProperties}>
+            {CARDIO_CHOICES.map((c) => {
+              const on = (draft.activity ?? "intervaller") === c.id;
+              return (
+                <button key={c.id} className={on ? "on" : ""} aria-pressed={on} disabled={!on && (doneSets > 0 || anyRunning)} onClick={() => chooseActivity(c.id)}>
+                  <span aria-hidden>{c.icon}</span>
+                  {c.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {!isTour && (
       <div className="tr-how card">
         <strong>Sådan gør du</strong>
         <span className="small">
@@ -855,6 +929,7 @@ export function TrainTab({
           næste gang.
         </span>
       </div>
+      )}
 
       {day.warmup && (
         <div className="card tr-warmup">
@@ -931,6 +1006,23 @@ export function TrainTab({
         const last = lastLog(sessions, ex.id, draft.date);
         const rows = draft.sets[ex.id] ?? [];
         const tip = suggest(ex, last?.log ?? null, loadCtx);
+        if (ex.unit === "km")
+          return (
+            <TourCard
+              key={ex.id}
+              ex={ex}
+              row={rows[0] ?? { reps: "" }}
+              isToday={isToday}
+              color={day.color}
+              index={idx}
+              lastText={last ? `${fmtSets(ex, last.log.sets)} (${fmtDate(last.date)})` : undefined}
+              hint={tip.hint}
+              onPatch={(p) => setRow(ex.id, 0, p)}
+              onStart={() => startSet(ex.id, 0, 0)}
+              onFinish={(km, sec) => finishTour(ex.id, km, sec)}
+              onCancel={() => cancelTour(ex.id)}
+            />
+          );
         const testRow = rows[0]?.test ? rows[0] : null;
         const testDone = !!testRow?.done && toNum(testRow.reps) > 0;
         const testNote = testDone && testRow ? afterTest(ex, testRow.kg ? toNum(testRow.kg) : 0, toNum(testRow.reps)).note : null;
@@ -1102,7 +1194,7 @@ export function TrainTab({
           </button>
         ) : (
           <button className="save-btn" onClick={onSave} disabled={saving || doneSets === 0}>
-            {saving ? "Gemmer…" : doneSets === 0 ? (isToday ? (anyRunning ? "Tryk ✓ ved sættet, når det er færdigt" : "Tryk ▶ for at starte dit første sæt") : "Tryk ✓ ved dine sæt for at gemme") : `Gem træningen (${doneSets} sæt)`}
+            {saving ? "Gemmer…" : isTour ? (doneSets ? "Gem turen" : "Start turen ovenfor, eller skriv den selv") : doneSets === 0 ? (isToday ? (anyRunning ? "Tryk ✓ ved sættet, når det er færdigt" : "Tryk ▶ for at starte dit første sæt") : "Tryk ✓ ved dine sæt for at gemme") : `Gem træningen (${doneSets} sæt)`}
           </button>
         )}
       </div>
@@ -1520,7 +1612,7 @@ export function HistoryTab({ sessions, body = [], onDelete }: { sessions: Sessio
             <summary>
               <span className="tr-hist-bar" />
               <span>
-                <strong>{day?.name ?? s.dayId}</strong>
+                <strong>{(() => { const t = s.exercises.find((e) => isCardio(e.id)); return t ? exerciseById(t.id)?.name : undefined; })() ?? day?.name ?? s.dayId}</strong>
                 <span className="small">
                   {fmtDate(s.date)} · {s.exercises.length} {s.exercises.length === 1 ? "øvelse" : "øvelser"}
                   {vol ? ` · ${vol.toLocaleString("da-DK")} kg løftet i alt` : ""}

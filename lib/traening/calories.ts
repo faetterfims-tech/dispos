@@ -13,10 +13,12 @@
  *   Bjergbestiger og intervaller i arbejdstiden: 7,5 (02020, burpees m.m. hårdt) – 8,8 (01305, HIIT)
  *   Opvarmning:   2,8 – 3,5 (02030, rygøvelser op og ned fra gulvet)
  *   Pauser:       1,5 – 2,0 (antagelse: stå/gå roligt)
+ *   Gåtur/løbetur: MET ud fra den målte fart (se cardio.ts).
  */
 import { dayById, exerciseById, type Exercise } from "./program";
 import type { Session } from "./logic";
 import { restFor, tempoFor } from "./timing";
+import { DEFAULT_KMH, cardioMet, isCardio, kmhOf } from "./cardio";
 
 export type WorkoutKind = "vaegte" | "kropsvaegt" | "kondition";
 
@@ -38,13 +40,14 @@ const WARMUP_MET = { low: 2.8, high: 3.5 };
 
 export function kindOf(dayId: string): WorkoutKind {
   const d = dayById(dayId);
-  if (!d || d.exercises.some((e) => e.unit === "runder")) return "kondition";
+  if (!d || d.exercises.some((e) => e.unit === "runder" || e.unit === "km")) return "kondition";
   return d.program === "udstyr" ? "vaegte" : "kropsvaegt";
 }
 
 /** Sekunder i arbejde for ét sæt: målt tid, ellers ud fra antal og rytme. */
 export function setWorkSec(ex: Exercise, set: { reps: number; sec?: number }): number {
   if (ex.unit === "runder") return set.reps * 30; // 30 sek hårdt pr. runde
+  if (ex.unit === "km") return set.sec && set.sec > 0 ? set.sec : (set.reps / (isCardio(ex.id) ? DEFAULT_KMH[ex.id] : 5)) * 3600;
   if (set.sec && set.sec > 0) return set.sec;
   if (ex.unit === "sek") return set.reps;
   const cycle = (tempoFor(ex) ?? [{ sec: 3 }]).reduce((a, p) => a + p.sec, 0);
@@ -75,14 +78,17 @@ export function estimateCalories(input: CalorieInput): CalorieRange {
   let high = 0;
   let guessedRest = 0;
   for (const { ex, sets } of input.exercises) {
-    const m = workMet(ex);
     for (const s of sets) {
-      const h = setWorkSec(ex, s) / 3600;
+      const sec = setWorkSec(ex, s);
+      const h = sec / 3600;
+      // Ture: MET ud fra farten, ±10 %.
+      const met = ex.unit === "km" && isCardio(ex.id) ? cardioMet(ex.id, kmhOf(s.reps, sec)) : 0;
+      const m = met ? { low: met * 0.9, high: met * 1.1 } : workMet(ex);
       low += m.low * kg * h;
       high += m.high * kg * h;
     }
     // Intervaller: 30 sek pause pr. runde. Andre: den foreskrevne pause mellem sættene.
-    guessedRest += ex.unit === "runder" ? sets.reduce((a, s) => a + s.reps * 30, 0) : Math.max(0, sets.length - 1) * restFor(ex);
+    guessedRest += ex.unit === "km" ? 0 : ex.unit === "runder" ? sets.reduce((a, s) => a + s.reps * 30, 0) : Math.max(0, sets.length - 1) * restFor(ex);
   }
   const restH = (input.restSec ?? guessedRest) / 3600;
   const warmH = (input.warmupSec ?? 0) / 3600;
@@ -102,6 +108,8 @@ export function sessionCalories(s: Session, bodyKg?: number): CalorieRange {
     const setSec = exercises.reduce((a, { ex, sets }) => a + sets.reduce((b, x) => b + (x.sec ?? 0), 0) * (ex.unit === "runder" ? 0 : 1), 0);
     warmupSec = Math.max(0, s.time.activeSec - setSec);
   }
+  // Ture: kun selve turen tæller (pauser undervejs er allerede trukket fra).
+  if (exercises.some(({ ex }) => ex.unit === "km")) return estimateCalories({ bodyKg, exercises, restSec: 0, warmupSec: 0 });
   return estimateCalories({ bodyKg, exercises, restSec: s.time?.restSec, warmupSec });
 }
 

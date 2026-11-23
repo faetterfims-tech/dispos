@@ -121,7 +121,7 @@ const TEMPO: Record<string, Phase[]> = {
 
 /** Rytmen for en øvelse. Null = ingen rytme (hold eller intervaller). */
 export function tempoFor(ex: Exercise): Phase[] | null {
-  if (ex.unit === "sek" || ex.unit === "runder") return null;
+  if (ex.unit === "sek" || ex.unit === "runder" || ex.unit === "km") return null;
   return TEMPO[ex.id] ?? NED_FOERST;
 }
 
@@ -134,7 +134,7 @@ const CORE_REST = new Set(["planke", "sideplanke", "deadbug", "bjergbestiger", "
  * med lidt længere til store benøvelser.
  */
 export function restFor(ex: Exercise): number {
-  if (ex.unit === "runder") return 0;
+  if (ex.unit === "runder" || ex.unit === "km") return 0;
   if (LEG_REST.has(ex.id)) return 120;
   if (CORE_REST.has(ex.id)) return 60;
   return 90;
