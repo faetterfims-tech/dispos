@@ -13,11 +13,12 @@ test("afrunding til håndvægte", () => {
   assert.equal(roundKg(12.7), 12);
 });
 
-test("startgæt: fornuftige tal for Daniel (85 kg, ny, mand)", () => {
+test("startgæt: milde tal for Daniel (85 kg, ny, mand)", () => {
   const ctx = { bodyKg: 85, profile: { level: "ny" as const, sex: "mand" as const } };
-  assert.equal(startWeight(ex("goblet"), ctx), 12);
-  assert.equal(startWeight(ex("roning"), ctx), 10);
-  assert.equal(startWeight(ex("skulderpres"), ctx), 6);
+  assert.equal(startWeight(ex("goblet"), ctx), 8);
+  assert.equal(startWeight(ex("roning"), ctx), 6);
+  assert.equal(startWeight(ex("skulderpres"), ctx), 4);
+  assert.equal(startWeight(ex("curl"), ctx), 4);
   assert.equal(startWeight(ex("sideloeft"), ctx), 2);
 });
 
@@ -25,7 +26,7 @@ test("startgæt: lettere for kvinde og nybegynder end for øvet mand", () => {
   const w = startWeight(ex("skulderpres"), { bodyKg: 65, profile: { level: "ny", sex: "kvinde" } });
   const m = startWeight(ex("skulderpres"), { bodyKg: 90, profile: { level: "oevet", sex: "mand" } });
   assert.ok(w < m);
-  assert.ok(w >= 1 && w <= 4, `kvinde ${w}`);
+  assert.ok(w >= 1 && w <= 3, `kvinde ${w}`);
 });
 
 test("vægt ud fra antal (Epley)", () => {
@@ -47,7 +48,7 @@ test("testsæt: beholder vægten inden for målet, ellers justeres", () => {
 test("første gang: testsæt med startgæt", () => {
   const s = suggest(ex("goblet"), null, { bodyKg: 85, profile: { level: "ny", sex: "mand" } });
   assert.ok(s.test);
-  assert.equal(s.sets[0].kg, 12);
+  assert.equal(s.sets[0].kg, 8);
   assert.equal(s.sets[0].reps, 0);
   assert.equal(s.sets[1].reps, 10);
   assert.ok(!/Skriv din vægt/.test(s.hint));

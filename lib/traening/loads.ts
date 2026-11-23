@@ -51,6 +51,9 @@ const LEVEL_FACTOR: Record<Level, number> = { ny: 1, lidt: 1.3, oevet: 1.7 };
 /** Kvinder er i snit relativt stærkere i benene end i overkroppen. Ukendt: lidt forsigtigt. */
 const sexFactor = (sex: Sex | undefined, upper: boolean) => (sex === "kvinde" ? (upper ? 0.55 : 0.75) : sex === "mand" ? 1 : 0.85);
 
+/** Startgættet gøres bevidst mildt: hellere for let end for tungt. Testsættet skruer op. */
+export const MILD = 0.75;
+
 /** Antaget kropsvægt, hvis den ikke er skrevet ind. */
 export const DEFAULT_BODY_KG = 75;
 
@@ -68,7 +71,7 @@ export function startWeight(ex: Exercise, ctx: LoadContext = {}): number {
   const r = RATIOS[ex.id] ?? { ratio: 0.08, upper: true };
   const body = ctx.bodyKg && ctx.bodyKg > 30 ? ctx.bodyKg : DEFAULT_BODY_KG;
   const level = ctx.profile?.level ?? "ny";
-  return roundKg(body * r.ratio * LEVEL_FACTOR[level] * sexFactor(ctx.profile?.sex, r.upper));
+  return roundKg(body * r.ratio * LEVEL_FACTOR[level] * sexFactor(ctx.profile?.sex, r.upper) * MILD);
 }
 
 /** Estimeret maks (Epley), med loft over antal, da formlen bliver upræcis ved mange gentagelser. */
