@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { Exercise } from "@/lib/traening/program";
 import { stepFor } from "@/lib/traening/loads";
-import { fmtDuration, restFor, tempoFor, tempoState } from "@/lib/traening/timing";
+import { fmtDuration, restFor, tempoFor, tempoState, type Phase, type PhaseName } from "@/lib/traening/timing";
 import { useWakeLock } from "./device";
 
 /** Det, timeren skal vide om et sæt. */
@@ -34,7 +34,35 @@ export function nextSet(exercises: Exercise[], sets: Record<string, TimerRow[]>,
 const toNum = (s: string) => Number(s.replace(",", "."));
 const fmtKg = (kg: number) => (Number.isInteger(kg) ? String(kg) : kg.toFixed(1).replace(".", ","));
 
-const COLORS = { ned: "#2a6fd6", op: "#1f8a5b", hold: "#b7791f", pause: "#5b5953", klar: "#1f8a5b" };
+const COLORS = { ned: "#2a6fd6", op: "#1f8a5b", hold: "#b7791f", ud: "#2a6fd6", ind: "#1f8a5b", pause: "#5b5953", klar: "#1f8a5b" };
+const LABEL: Record<PhaseName, string> = { ned: "NED", op: "OP", hold: "HOLD", ud: "UD", ind: "IND" };
+const BEEP: Record<PhaseName, [number, number]> = { ned: [440, 160], op: [880, 110], hold: [660, 90], ud: [440, 160], ind: [880, 110] };
+
+/**
+ * Løbebar i høj opløsning: fylder op i takt med den aktuelle fase (eller mod måltiden ved hold).
+ * Opdateres med requestAnimationFrame direkte på elementet, så den glider uden hak.
+ */
+function PhaseBar({ startedAt, phases, holdSec }: { startedAt: number; phases: Phase[] | null; holdSec?: number }) {
+  const bar = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    let raf = 0;
+    const tick = () => {
+      const ms = Date.now() - startedAt;
+      let p = 0;
+      if (phases) p = tempoState(ms, phases).progress;
+      else if (holdSec) p = Math.min(1, Math.max(0, ms / (holdSec * 1000)));
+      if (bar.current) bar.current.style.transform = `scaleX(${p})`;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [startedAt, phases, holdSec]);
+  return (
+    <div className="tr-phasebar" aria-hidden>
+      <div ref={bar} />
+    </div>
+  );
+}
 
 export default function SetTimer({
   flow,
@@ -99,7 +127,7 @@ export default function SetTimer({
       const key = `${tState.reps}-${tState.phase}`;
       if (key !== lastCue.current) {
         lastCue.current = key;
-        say(tState.phase === "ned" ? 440 : 880, tState.phase === "ned" ? 160 : 110);
+        say(...BEEP[tState.phase]);
       }
     }
     if (flow.kind === "rest") {
@@ -234,6 +262,7 @@ export default function SetTimer({
 
   /* ----- I sættet ----- */
   const color = tState ? COLORS[tState.phase] : COLORS.hold;
+  const holdTarget = !tempo && row.reps ? toNum(row.reps) : 0;
   return (
     <div className="tr-timer" style={{ "--c": color } as CSSProperties} role="dialog" aria-label="Sæt i gang">
       <div className="tr-timer-top">
@@ -246,12 +275,16 @@ export default function SetTimer({
       </div>
       <div className="tr-timer-mid">
         <div className="tr-timer-sub">Mål: {target}</div>
-        {tState ? (
+        {tState && tempo ? (
           <>
-            <div className="tr-timer-phase">{tState.phase === "ned" ? "NED" : "OP"}</div>
+            <div className="tr-timer-phase">{LABEL[tState.phase]}</div>
+            <PhaseBar startedAt={row.startedAt!} phases={tempo} />
+            <div className="tr-timer-sub">
+              Næste: {LABEL[tState.next]} om {tState.left} sek
+            </div>
             <div className="tr-timer-title">Gentagelse {tState.reps + 1}</div>
             <div className="tr-timer-sub">
-              {tempo!.down} sek ned · {tempo!.up} sek op · {fmtDuration(Math.floor(elapsed / 1000))}
+              {tempo.map((p) => `${p.sec} sek ${p.name}`).join(" · ")} · {fmtDuration(Math.floor(elapsed / 1000))}
             </div>
           </>
         ) : (
@@ -259,7 +292,8 @@ export default function SetTimer({
             <div className="tr-timer-big" aria-live="polite">
               {fmtDuration(Math.max(0, Math.floor(elapsed / 1000)))}
             </div>
-            <div className="tr-timer-title">Hold</div>
+            {holdTarget > 0 && <PhaseBar startedAt={row.startedAt!} phases={null} holdSec={holdTarget} />}
+            <div className="tr-timer-title">{holdTarget > 0 && elapsed / 1000 >= holdTarget ? "Målet er nået 💪" : "Hold"}</div>
           </>
         )}
       </div>

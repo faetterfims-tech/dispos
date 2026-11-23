@@ -1408,3 +1408,23 @@ button.danger {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
+
+/* Løbebar i sættimeren */
+.tr-phasebar {
+  width: min(80vw, 22rem);
+  height: 14px;
+  border-radius: 99px;
+  background: rgb(255 255 255 / 0.22);
+  overflow: hidden;
+  margin: 0.6rem 0 0.2rem;
+}
+
+.tr-phasebar div {
+  height: 100%;
+  width: 100%;
+  background: #fff;
+  border-radius: 99px;
+  transform-origin: left center;
+  transform: scaleX(0);
+  will-change: transform;
+}
