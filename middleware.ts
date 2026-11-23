@@ -1,8 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { AUTH_COOKIE, authToken, basicHeader, passwordFromBasic, safeEqual } from "@/lib/auth";
 
 /**
  * Hele dispos er låst bag én adgangskode (DISPOS_PASSWORD).
- * Browseren spørger én gang og husker det. Brugernavnet er ligegyldigt.
+ * Browsere logger ind på /login og huskes med en cookie (se lib/auth.ts) —
+ * det virker også, når dispos er installeret som app på hjemmeskærmen.
+ * Scripts (Home Assistant, curl) kan stadig sende koden som Basic Auth.
  * Uden DISPOS_PASSWORD er siden lukket — så den aldrig ved et uheld står åben.
  *
  * Undtagelse: træningsappen kan deles via personlige links (/t/<token>).
@@ -15,7 +18,10 @@ const TRAINING_COOKIE = "dispos_traening";
 
 const isTrainingPath = (path: string) => path === "/traening" || path.startsWith("/traening/") || path === "/api/traening";
 
-export function middleware(req: NextRequest) {
+/** Sider der skal kunne nås uden login. */
+const isPublicPath = (path: string) => path === "/login" || path === "/api/login" || path.startsWith("/t/");
+
+export async function middleware(req: NextRequest) {
   const password = process.env.DISPOS_PASSWORD;
   if (!password) {
     return new NextResponse("DISPOS_PASSWORD er ikke sat i Vercel → Settings → Environment Variables.", {
@@ -25,36 +31,41 @@ export function middleware(req: NextRequest) {
   }
 
   const path = req.nextUrl.pathname;
-  // Invitationslinket tjekker selv sit token.
-  if (path.startsWith("/t/")) return NextResponse.next();
+  if (isPublicPath(path)) return NextResponse.next();
 
-  const header = req.headers.get("authorization");
-  if (header?.startsWith("Basic ")) {
-    try {
-      const decoded = atob(header.slice(6));
-      const given = decoded.slice(decoded.indexOf(":") + 1);
-      if (safeEqual(given, password)) return NextResponse.next();
-    } catch {
-      /* ugyldig base64 */
-    }
+  // Scripts: koden som Basic Auth.
+  const given = passwordFromBasic(req.headers.get("authorization"));
+  if (given !== null && safeEqual(given, password)) return NextResponse.next();
+
+  // Browser: login-cookien. Vi sætter Basic-headeren på forespørgslen, så API'er,
+  // der genkender ejeren på den (fx træningsappen), virker uændret.
+  const cookie = req.cookies.get(AUTH_COOKIE)?.value;
+  if (cookie && safeEqual(cookie, await authToken(password))) {
+    const headers = new Headers(req.headers);
+    headers.set("authorization", basicHeader(password));
+    return NextResponse.next({ request: { headers } });
   }
 
   // Inviterede (cookie fra linket) må kun komme ind i træningsappen.
-  if (isTrainingPath(path) && req.cookies.get(TRAINING_COOKIE)?.value) return NextResponse.next();
+  if (isTrainingPath(path) && req.cookies.get(TRAINING_COOKIE)?.value) {
+    // Sørg for at en falsk/forkert Basic-header ikke følger med videre.
+    const headers = new Headers(req.headers);
+    headers.delete("authorization");
+    return NextResponse.next({ request: { headers } });
+  }
 
-  return new NextResponse("Adgangskode påkrævet", {
-    status: 401,
-    headers: { "WWW-Authenticate": 'Basic realm="dispos", charset="UTF-8"' },
-  });
-}
+  if (path.startsWith("/api/")) {
+    return NextResponse.json({ error: "Log ind på dispos først." }, { status: 401 });
+  }
 
-function safeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
+  const login = new URL("/login", req.nextUrl.origin);
+  if (path !== "/") login.searchParams.set("next", path + req.nextUrl.search);
+  return NextResponse.redirect(login, 303);
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.svg).*)"],
+  // Filer, der skal kunne hentes uden login: app-manifest, ikoner, service worker og offline-side.
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.svg|manifest.webmanifest|sw.js|offline.html|apple-touch-icon.png|icons/).*)",
+  ],
 };

@@ -18,6 +18,11 @@ export default function Home() {
           </Link>
         ))}
       </div>
+      <form method="post" action="/api/logout" className="logout">
+        <button type="submit" className="secondary">
+          Log ud
+        </button>
+      </form>
     </>
   );
 }
