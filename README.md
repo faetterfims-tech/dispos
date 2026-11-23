@@ -32,6 +32,8 @@ Træningslog til hjemmeprogrammet (4 styrkepas + 2 intervalpas om ugen).
 - **Vægt**: vægt og mål om maven med grafer.
 - **Tidligere**: alle træninger med mulighed for at slette.
 
+**Sættimer:** ▶ ved et sæt åbner en timer i fuld skærm med rytme (2 sek ned, 1 sek op, bip ved hver fase og tælling af gentagelser), indtil man trykker Færdig. Bagefter bekræftes antal og kg, og en pausenedtælling starter (90 sek, 60 sek for små øvelser) med bip de sidste 3 sek og visning af næste sæt. Lyd kan slås fra.
+
 **Vægtforslag:** første gang en vægtøvelse laves, er sæt 1 et testsæt med et forsigtigt startgæt ud fra kropsvægt, erfaring og evt. køn ("Om dig" under Vægt). Ud fra antallet i testsættet beregnes vægten til resten (Epley). Derefter foreslås mere vægt, når alle sæt når toppen af intervallet (større spring, hvis man er langt over), og mindre, når man er langt under. Logikken ligger i `lib/traening/loads.ts` og `suggest()` i `logic.ts`.
 
 **Mit udstyr:** øverst under "Træn" sætter man hak ved det udstyr, man har (håndvægte, pull-up-stang, bænk, elastikbånd, stol). Hver plads i et pas har alternativer i prioriteret rækkefølge (`slots` i `program.ts`), og `resolveDay()` vælger det første, man kan lave. Med håndvægte bruges programmet med 6 pas, uden håndvægte kropsvægt-programmet. Valget gemmes pr. person (`meta.equipment`). En test gennemgår alle 32 kombinationer af udstyr.

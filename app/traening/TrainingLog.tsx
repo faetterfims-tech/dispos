@@ -38,6 +38,8 @@ import {
 import LineChart from "./LineChart";
 import { LEVELS, afterTest, type LoadContext, type Profile, type Sex } from "@/lib/traening/loads";
 import WarmupTimer from "./WarmupTimer";
+import SetTimer, { type Flow } from "./SetTimer";
+import { useBeeper } from "./device";
 import { fmtDuration, fmtMinutes, splitTime, type Interval } from "@/lib/traening/timing";
 
 type Tab = "traen" | "fremgang" | "krop" | "historik" | "inviter";
@@ -582,6 +584,14 @@ export function TrainTab({
   const [preview, setPreview] = useState<string | null>(null);
   /** Åben timer: "all" = hele opvarmningen, tal = én øvelse. */
   const [timer, setTimer] = useState<"all" | number | null>(null);
+  /** Sættimer og pause (fuld skærm). */
+  const [flow, setFlow] = useState<Flow | null>(null);
+  const { init: initSound, beep } = useBeeper();
+  const [sound, setSoundState] = useState<boolean>(() => load<boolean>("dispos.traening.lyd") ?? true);
+  const setSound = (on: boolean) => {
+    setSoundState(on);
+    save("dispos.traening.lyd", on);
+  };
 
   const isToday = draft.date === today();
   const workout = draft.workout;
@@ -897,11 +907,27 @@ export function TrainTab({
                       ✓{r.sec ? <span className="tr-done-sec">{fmtDuration(r.sec)}</span> : null}
                     </button>
                   ) : r.startedAt ? (
-                    <button className="tr-done running" onClick={finishSet} aria-label={`Sæt ${i + 1} i gang. Tryk når det er færdigt`}>
+                    <button
+                      className="tr-done running"
+                      onClick={() => {
+                        initSound();
+                        setFlow({ kind: "set", exId: ex.id, i });
+                      }}
+                      aria-label={`Sæt ${i + 1} i gang. Tryk for at se timeren`}
+                    >
                       <span className="tr-done-sec">{fmtDuration(Math.max(0, Math.round((Date.now() - r.startedAt) / 1000)))}</span>✓
                     </button>
                   ) : (
-                    <button className="tr-done" disabled={locked} onClick={() => startSet(ex.id, i)} aria-label={`Start sæt ${i + 1}`}>
+                    <button
+                      className="tr-done"
+                      disabled={locked}
+                      onClick={() => {
+                        initSound();
+                        startSet(ex.id, i);
+                        setFlow({ kind: "set", exId: ex.id, i });
+                      }}
+                      aria-label={`Start sæt ${i + 1}`}
+                    >
                       ▶
                     </button>
                   )}
@@ -931,7 +957,28 @@ export function TrainTab({
         </label>
       </div>
 
+      {flow && (
+        <SetTimer
+          flow={flow}
+          exercises={day.exercises}
+          sets={draft.sets}
+          onFlow={setFlow}
+          onStartSet={startSet}
+          onFinishSet={finishSet}
+          onEdit={(exId, i, patch) => setRow(exId, i, patch)}
+          beep={beep}
+          initSound={initSound}
+          sound={sound}
+          onSound={setSound}
+        />
+      )}
+
       <div className="tr-savebar">
+        {flow?.kind === "rest" && flow.hidden && (
+          <button className="tr-rest-chip" onClick={() => setFlow({ ...flow, hidden: false })}>
+            {flow.until > Date.now() ? `⏸ Pause ${fmtDuration(Math.ceil((flow.until - Date.now()) / 1000))} · tryk for næste sæt` : "💪 Klar til næste sæt"}
+          </button>
+        )}
         {split && (
           <div className="tr-split" aria-label="Tidsforbrug">
             <span className="tr-split-total">⏱ {fmtDuration(split.totalSec)}</span>

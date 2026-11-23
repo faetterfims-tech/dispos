@@ -1,3 +1,5 @@
+import type { Exercise } from "./program";
+
 /**
  * Tid på en træning: aktiv (i et startet sæt eller opvarmningstimer),
  * pause (hvile op til REST_SEC efter hver aktiv periode) og spildtid (resten).
@@ -76,4 +78,33 @@ export function fmtMinutes(sec: number): string {
   if (sec < 60) return `${sec} sek`;
   const m = Math.round(sec / 60);
   return m >= 60 ? `${Math.floor(m / 60)} t ${m % 60} min` : `${m} min`;
+}
+
+/* ---------- Rytme og pause pr. øvelse ---------- */
+
+
+/** Rytme for én gentagelse: sekunder ned (den langsomme del) og op. Null = ingen rytme (hold/intervaller). */
+export function tempoFor(ex: Exercise): { down: number; up: number } | null {
+  if (ex.unit === "sek" || ex.unit === "runder") return null;
+  return { down: 2, up: 1 };
+}
+
+/** Små øvelser og mave: kortere pause. */
+const SHORT_REST = new Set(["curl", "sideloeft", "triceps", "ytraek", "ttraek", "baandtraek", "deadbug", "planke", "sideplanke", "bjergbestiger", "knaeloeft", "hoftehaev", "hoftebenet"]);
+
+/** Pause efter et sæt, i sekunder. */
+export function restFor(ex: Exercise): number {
+  if (ex.unit === "runder") return 0;
+  return SHORT_REST.has(ex.id) ? 60 : 90;
+}
+
+/** Hvor i rytmen er man efter `ms`: fase, sekunder tilbage i fasen og antal hele gentagelser. */
+export function tempoState(ms: number, tempo: { down: number; up: number }): { phase: "ned" | "op"; left: number; reps: number } {
+  const cycle = (tempo.down + tempo.up) * 1000;
+  const t = Math.max(0, ms);
+  const inCycle = t % cycle;
+  const down = tempo.down * 1000;
+  return inCycle < down
+    ? { phase: "ned", left: Math.ceil((down - inCycle) / 1000), reps: Math.floor(t / cycle) }
+    : { phase: "op", left: Math.ceil((cycle - inCycle) / 1000), reps: Math.floor(t / cycle) };
 }
