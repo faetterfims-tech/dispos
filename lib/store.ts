@@ -70,3 +70,8 @@ export async function del(...keys: string[]): Promise<void> {
   if (keys.length === 0) return;
   await command(["DEL", ...keys]);
 }
+
+/** Henter en streng-nøgle. */
+export async function get(key: string): Promise<string | null> {
+  return command<string | null>(["GET", key]);
+}
