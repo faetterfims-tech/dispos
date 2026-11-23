@@ -5,7 +5,7 @@
  */
 
 /** kg = vægt × antal · reps = kropsvægt (evt. ekstra kg) · sek = holdetid · runder = intervaller */
-export type Unit = "kg" | "reps" | "sek" | "runder";
+export type Unit = "kg" | "reps" | "sek" | "runder" | "km";
 
 export interface Exercise {
   id: string;
@@ -227,12 +227,34 @@ const E = {
     id: "intervaller",
     name: "Intervaller: 30 sek hårdt, 30 sek pause",
     muscles: "Kondition og fedtforbrænding",
-    how: "5 min opvarmning. Så 30 sek så hårdt du kan (sprællemænd, burpees, sjippetov, cykel eller trappeløb) og 30 sek pause. Det er 1 runde.",
+    how: "5 min opvarmning (gå eller jog på stedet). Så 30 sek så hårdt du kan og 30 sek pause. Det er 1 runde. Vælg fx sprællemænd, høje knæløft, burpees eller løb på trappen.",
     aka: "hiit 30 30",
     unit: "runder",
     sets: 1,
     target: [10, 15],
-    tip: "Lørdag kan du også bare gå en tur på 45–60 min.",
+    tip: "Du kan også vælge en gåtur eller løbetur i stedet (knapperne øverst).",
+  }),
+  gaatur: ex({
+    id: "gaatur",
+    name: "Gåtur",
+    muscles: "Kondition og fedtforbrænding",
+    how: "Gå i rask tempo, så du bliver lidt forpustet, men stadig kan tale. Tryk Start turen, så måler appen distance og fart med telefonens GPS. Har du gået uden appen, kan du skrive distance og tid selv.",
+    aka: "",
+    unit: "km",
+    sets: 1,
+    target: [3, 6],
+    tip: "Jo hurtigere du går, jo mere forbrænder du pr. km. Rask gang (6 km/t) bruger næsten dobbelt så meget som en slentretur.",
+  }),
+  loebetur: ex({
+    id: "loebetur",
+    name: "Løbetur",
+    muscles: "Kondition og fedtforbrænding",
+    how: "Løb i et roligt tempo, hvor du kan sige korte sætninger. Gå et par minutter, hvis du bliver for forpustet, og løb igen. Tryk Start turen, så måler appen distance og fart.",
+    aka: "",
+    unit: "km",
+    sets: 1,
+    target: [2, 5],
+    tip: "Ny løber: skift mellem 1 min løb og 2 min gang, og løb lidt mere for hver tur.",
   }),
   skraapres: ex({
     id: "skraapres",
@@ -476,6 +498,20 @@ export const DAYS: Day[] = [
 ];
 
 /** Med håndvægte bruges programmet med udstyr, ellers kropsvægt-programmet. */
+/** Konditionspas kan tages som intervaller, gåtur eller løbetur. */
+export const CARDIO_CHOICES: { id: string; label: string; icon: string }[] = [
+  { id: "intervaller", label: "Intervaller", icon: "🔥" },
+  { id: "gaatur", label: "Gåtur", icon: "🚶" },
+  { id: "loebetur", label: "Løbetur", icon: "🏃" },
+];
+export const isCardioDay = (d: Day) => d.slots.length === 1 && d.slots[0][0]?.id === "intervaller";
+/** Konditionspasset med den valgte aktivitet. Andre pas er uændrede. */
+export function withActivity(d: Day, activity?: string): Day {
+  if (!activity || !isCardioDay(d) || !CARDIO_CHOICES.some((c) => c.id === activity)) return d;
+  const e = exerciseById(activity);
+  return e ? { ...d, exercises: [e] } : d;
+}
+
 export const programFor = (owned: Equip[]): ProgramId => (owned.includes("haandvaegte") ? "udstyr" : "kropsvaegt");
 
 export const PROGRAMS: { id: ProgramId; name: string; description: string }[] = [

@@ -1622,3 +1622,108 @@ button.danger {
   font-size: 0.75rem;
   color: var(--text-2);
 }
+
+/* ---------- Gåtur / løbetur ---------- */
+.tr-timer[hidden] {
+  display: none;
+}
+.tr-activity {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+.tr-activity button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.7rem 0.3rem;
+  border-radius: 14px;
+  border: 2px solid var(--border);
+  background: var(--surface);
+  color: inherit;
+  font-weight: 600;
+}
+.tr-activity button span {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+.tr-activity button.on {
+  border-color: var(--c, #e2662b);
+  background: color-mix(in srgb, var(--c, #e2662b) 12%, transparent);
+}
+.tr-activity button:disabled:not(.on) {
+  opacity: 0.45;
+}
+.tr-tour-manual {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+}
+.tr-tour-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+.tr-tour-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--text-2);
+}
+.tr-tour-fields input {
+  font-size: 1.2rem;
+  text-align: center;
+}
+.tr-tour-result {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.tr-tour-stats,
+.tr-tour-live {
+  display: flex;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+}
+.tr-tour-stats div,
+.tr-tour-live div {
+  display: flex;
+  flex-direction: column;
+}
+.tr-tour-stats b {
+  font-size: 1.4rem;
+}
+.tr-tour-stats span,
+.tr-tour-live span {
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+.tr-tour-live {
+  justify-content: center;
+  margin: 0.6rem 0;
+}
+.tr-tour-live div {
+  align-items: center;
+}
+.tr-tour-live b {
+  font-size: 1.7rem;
+}
+.tr-tour-unit {
+  font-size: 0.35em;
+  font-weight: 600;
+}
+.tr-tour-note {
+  max-width: 22rem;
+  margin: 0.4rem auto 0;
+  opacity: 0.8;
+  font-size: 0.85rem;
+}
+.tr-timer-big.tr-tour-km {
+  font-size: clamp(3.5rem, 22vw, 6rem);
+  white-space: nowrap;
+}

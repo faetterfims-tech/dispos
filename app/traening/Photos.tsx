@@ -277,7 +277,7 @@ export function AfterSaveModal({
   onPhotoAdded,
   onClose,
 }: {
-  summary: { kcal: { low: number; high: number }; sets: number; totalSec?: number; activeSec?: number };
+  summary: { kcal: { low: number; high: number }; sets: number; totalSec?: number; activeSec?: number; tour?: { km: number; sec?: number } };
   bodyDue: boolean;
   photoDue: boolean;
   photos: PhotoMeta[];
@@ -310,11 +310,26 @@ export function AfterSaveModal({
     <Modal onClose={onClose}>
       <h2 style={{ marginTop: 0 }}>Godt gået! 💪</h2>
       <div className="tr-summary">
-        <div>
-          <b>{summary.sets}</b>
-          <span>sæt</span>
-        </div>
-        {summary.totalSec ? (
+        {summary.tour ? (
+          <>
+            <div>
+              <b>{summary.tour.km.toFixed(2).replace(".", ",")} km</b>
+              <span>distance</span>
+            </div>
+            {summary.tour.sec ? (
+              <div>
+                <b>{Math.round(summary.tour.sec / 60)} min</b>
+                <span>{(summary.tour.km / (summary.tour.sec / 3600)).toFixed(1).replace(".", ",")} km/t</span>
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div>
+            <b>{summary.sets}</b>
+            <span>sæt</span>
+          </div>
+        )}
+        {summary.totalSec && !summary.tour ? (
           <div>
             <b>{Math.round(summary.totalSec / 60)} min</b>
             <span>i alt{summary.activeSec ? ` · ${Math.round(summary.activeSec / 60)} aktiv` : ""}</span>
@@ -322,7 +337,7 @@ export function AfterSaveModal({
         ) : null}
         <div>
           <b>
-            🔥 {summary.kcal.low}–{summary.kcal.high}
+            🔥 {summary.kcal.low === summary.kcal.high ? `ca. ${summary.kcal.low}` : `${summary.kcal.low}–${summary.kcal.high}`}
           </b>
           <span>kcal (skøn)</span>
         </div>

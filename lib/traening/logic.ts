@@ -143,6 +143,8 @@ export function score(unit: Unit, log: ExerciseLog): number {
       return Math.max(...log.sets.map((s) => s.reps));
     case "runder":
       return log.sets.reduce((sum, s) => sum + s.reps, 0);
+    case "km":
+      return log.sets.reduce((sum, s) => sum + s.reps, 0);
   }
 }
 
@@ -151,6 +153,7 @@ export const scoreLabel: Record<Unit, string> = {
   reps: "Antal i alt",
   sek: "Længste hold (sek)",
   runder: "Runder",
+  km: "Distance (km)",
 };
 
 export function progressSeries(sessions: Session[], ex: Exercise): { date: string; value: number }[] {
@@ -177,6 +180,7 @@ export interface Suggestion {
 /** Hvad skal der stå i felterne i dag, og hvad er målet — ud fra sidste gang (og profilen første gang). */
 export function suggest(ex: Exercise, last: ExerciseLog | null, ctx: LoadContext = {}): Suggestion {
   const [lo, hi] = ex.target;
+  if (ex.unit === "km") return suggestTour(ex, last);
   if (!last || !last.sets.length) {
     if (ex.unit === "kg") {
       const kg = startWeight(ex, ctx);
@@ -257,6 +261,19 @@ export function suggest(ex: Exercise, last: ExerciseLog | null, ctx: LoadContext
       return { sets: [{ kg: 0, reps: next }], hint: r >= hi ? `${r} runder sidst. Tag dem hårdere i stedet for flere.` : `${r} runder sidst. Prøv ${next}.` };
     }
   }
+}
+
+/** Gåtur/løbetur: ét "sæt" = distance (reps, km) og tid (sec). */
+function suggestTour(ex: Exercise, last: ExerciseLog | null): Suggestion {
+  const walk = ex.id === "gaatur";
+  const s = last?.sets[0];
+  if (!s) return { sets: [{ kg: 0, reps: 0 }], hint: walk ? `Første gang: gå ${ex.target[0]}–${ex.target[1]} km i rask tempo.` : `Første gang: løb roligt ${ex.target[0]}–${ex.target[1]} km, gerne med gåpauser.` };
+  const km = s.reps.toFixed(1).replace(".", ",");
+  const kmh = s.sec ? (s.reps / (s.sec / 3600)).toFixed(1).replace(".", ",") : null;
+  return {
+    sets: [{ kg: 0, reps: 0 }],
+    hint: `Sidst ${km} km${kmh ? ` med ${kmh} km/t` : ""}. Prøv at gå lidt længere eller lidt hurtigere.`.replace("gå lidt", walk ? "gå lidt" : "løbe lidt"),
+  };
 }
 
 export const fmtKg = (kg: number) => (Number.isInteger(kg) ? String(kg) : kg.toFixed(1).replace(".", ","));
