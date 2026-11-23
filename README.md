@@ -40,6 +40,12 @@ Træningslog til hjemmeprogrammet (4 styrkepas + 2 intervalpas om ugen).
 
 Programmet ligger i `lib/traening/program.ts`, logikken i `lib/traening/logic.ts` (tests i `logic.test.ts`). Data gemmes i Upstash Redis (`traening:sessions`, `traening:body`) via `app/api/traening/route.ts`.
 
+## Login og app
+
+- **Login:** browsere logger ind på `/login` og huskes i 400 dage med en cookie (`dispos_auth`, en HMAC af `DISPOS_PASSWORD`). Skiftes koden, bliver alle logget ud. Scripts (Home Assistant, curl) kan stadig sende koden som Basic Auth. Logikken ligger i `lib/auth.ts` og `middleware.ts`.
+- **Som app (PWA):** `app/manifest.ts`, ikoner i `public/icons/` og `public/apple-touch-icon.png`, service worker i `public/sw.js` (gemmer kun Next.js' statiske filer, aldrig data; viser `public/offline.html` uden net). Disse filer kan hentes uden login.
+- Installér: iPhone → Safari → Del → *Føj til hjemmeskærm*. Android → Chrome → ⋮ → *Installer app*.
+
 ## Miljøvariabler (Vercel → Settings → Environment Variables)
 
 | Navn | |

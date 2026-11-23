@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="da">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+    <title>Ingen forbindelse · dispos</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { font-family: system-ui, sans-serif; background: #f6f5f2; color: #0b0b0b; display: grid; place-items: center; min-height: 100vh; margin: 0; padding: 1.5rem; text-align: center; }
+      @media (prefers-color-scheme: dark) { body { background: #141413; color: #f0efec; } p { color: #c3c2b7 !important; } }
+      div { max-width: 24rem; }
+      img { width: 64px; height: 64px; border-radius: 14px; }
+      h1 { font-size: 1.4rem; margin: 1rem 0 0.5rem; }
+      p { color: #52514e; line-height: 1.5; }
+      button { font: inherit; font-weight: 600; background: #2a78d6; color: #fff; border: 0; border-radius: 10px; padding: 0.6rem 1.2rem; min-height: 44px; }
+    </style>
+  </head>
+  <body>
+    <div>
+      <img src="/icons/icon-192.png" alt="" />
+      <h1>Ingen forbindelse</h1>
+      <p>dispos skal bruge internet for at hente dine data. Prøv igen, når du har forbindelse.</p>
+      <button onclick="location.reload()">Prøv igen</button>
+    </div>
+  </body>
+</html>
