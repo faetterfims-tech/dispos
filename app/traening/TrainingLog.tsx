@@ -40,6 +40,8 @@ import { LEVELS, afterTest, type LoadContext, type Profile, type Sex } from "@/l
 import WarmupTimer from "./WarmupTimer";
 import SetTimer, { type Flow } from "./SetTimer";
 import { useBeeper } from "./device";
+import { AfterSaveModal, CompareModal, PhotosSection } from "./Photos";
+import { BODY_EVERY, COMPARE_EVERY, PHOTO_EVERY, daysBetween, isDue, pickComparison, type PhotoMeta } from "@/lib/traening/photos-core";
 import { fmtDuration, fmtMinutes, splitTime, type Interval } from "@/lib/traening/timing";
 
 type Tab = "traen" | "fremgang" | "krop" | "historik" | "inviter";
@@ -209,6 +211,35 @@ export default function TrainingLog() {
   const [flash, setFlash] = useState<string | null>(null);
   /** Linket virker ikke længere (adgang fjernet eller nyt link lavet). */
   const [denied, setDenied] = useState<string | null>(null);
+  /** Fremgangsbilleder (kun metadata; selve billederne hentes efter behov). */
+  const [photos, setPhotos] = useState<PhotoMeta[]>([]);
+  const [showCompare, setShowCompare] = useState(false);
+  const [afterSave, setAfterSave] = useState<{ bodyDue: boolean; photoDue: boolean } | null>(null);
+
+  // Hent billedlisten, og vis før/nu-sammenligningen en gang imellem.
+  useEffect(() => {
+    if (!data?.configured) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/traening/fotos", { cache: "no-store" });
+        const body = await res.json();
+        if (cancelled || !res.ok || !body.ok) return;
+        const list = body.photos as PhotoMeta[];
+        setPhotos(list);
+        const last = load<string>("dispos.traening.sammenlignet");
+        if (pickComparison(list) && isDue(last, today(), COMPARE_EVERY)) {
+          setShowCompare(true);
+          save("dispos.traening.sammenlignet", today());
+        }
+      } catch {
+        /* billeder er en bonus — ingen fejlbesked */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [data?.configured]);
 
   useEffect(() => {
     (async () => {
@@ -312,6 +343,12 @@ export default function TrainingLog() {
       setDraft(buildDraft(today(), nextInOrder(saved.dayId, orderOf(data)), next.sessions, equipOf(data), ctxOf(data)));
       showFlash("Træningen er gemt. Godt gået! 💪");
       setTab("historik");
+      // Mind om vægt/mål (hver uge) og billede (hver 2. uge), når det er tid.
+      const lastBody = [...next.body].reverse().find((b) => b.weightKg || b.waistCm)?.date ?? null;
+      const lastPhoto = photos.length ? photos[photos.length - 1].date : null;
+      const bodyDue = isDue(lastBody, today(), BODY_EVERY);
+      const photoDue = next.configured && isDue(lastPhoto, today(), PHOTO_EVERY);
+      if (bodyDue || photoDue) setAfterSave({ bodyDue, photoDue });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Kunne ikke gemme.");
@@ -478,10 +515,48 @@ export default function TrainingLog() {
           onEquipment={chooseEquipment}
         />
       )}
-      {tab === "fremgang" && <ProgressTab sessions={data.sessions} body={data.body} />}
+      {tab === "fremgang" && (
+        <ProgressTab
+          sessions={data.sessions}
+          body={data.body}
+          photos={data.configured ? photos : null}
+          onPhotoAdded={(p) => setPhotos((list) => [...list, p])}
+          onPhotoDeleted={(id) => setPhotos((list) => list.filter((x) => x.id !== id))}
+        />
+      )}
       {tab === "krop" && <BodyTab body={data.body} onSave={saveBodyEntry} onDelete={removeBody} profile={data.profile ?? null} onProfile={saveProfile} />}
       {tab === "historik" && <HistoryTab sessions={data.sessions} onDelete={removeSession} />}
       {tab === "inviter" && owner && <InviteTab />}
+
+      {showCompare && (
+        <CompareModal
+          photos={photos}
+          body={data.body}
+          onClose={() => setShowCompare(false)}
+          onSeeAll={() => {
+            setShowCompare(false);
+            setTab("fremgang");
+          }}
+        />
+      )}
+      {afterSave && (
+        <AfterSaveModal
+          bodyDue={afterSave.bodyDue}
+          photoDue={afterSave.photoDue}
+          photos={photos}
+          daysSinceBody={(() => {
+            const d = [...data.body].reverse().find((b) => b.weightKg || b.waistCm)?.date;
+            return d ? daysBetween(d, today()) : null;
+          })()}
+          daysSincePhoto={photos.length ? daysBetween(photos[photos.length - 1].date, today()) : null}
+          onBody={() => {
+            setAfterSave(null);
+            setTab("krop");
+          }}
+          onPhotoAdded={(p) => setPhotos((list) => [...list, p])}
+          onClose={() => setAfterSave(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1166,7 +1241,20 @@ export function PreviewDay({ date, day, sessions, onBack }: { date: string; day:
 
 /* ---------- Fremgang ---------- */
 
-function ProgressTab({ sessions, body }: { sessions: Session[]; body: BodyEntry[] }) {
+function ProgressTab({
+  sessions,
+  body,
+  photos,
+  onPhotoAdded,
+  onPhotoDeleted,
+}: {
+  sessions: Session[];
+  body: BodyEntry[];
+  /** null = databasen er ikke koblet på (billeder kræver den). */
+  photos: PhotoMeta[] | null;
+  onPhotoAdded: (p: PhotoMeta) => void;
+  onPhotoDeleted: (id: string) => void;
+}) {
   const used = useMemo(() => EXERCISES.filter((e) => sessions.some((s) => s.exercises.some((x) => x.id === e.id))), [sessions]);
   const [exId, setExId] = useState<string>(used[0]?.id ?? "");
   const ex = exerciseById(exId) ?? used[0];
@@ -1203,6 +1291,8 @@ function ProgressTab({ sessions, body }: { sessions: Session[]; body: BodyEntry[
           <div className="label">Om maven siden start</div>
         </div>
       </div>
+
+      {photos && <PhotosSection photos={photos} body={body} onAdded={onPhotoAdded} onDeleted={onPhotoDeleted} />}
 
       <div className="card">
         <h2>Bliver du stærkere?</h2>

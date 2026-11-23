@@ -16,7 +16,8 @@ import { AUTH_COOKIE, authToken, basicHeader, passwordFromBasic, safeEqual } fro
 /** Samme navn som TRAINING_COOKIE i lib/traening/invite-core.ts (kan ikke importeres i edge). */
 const TRAINING_COOKIE = "dispos_traening";
 
-const isTrainingPath = (path: string) => path === "/traening" || path.startsWith("/traening/") || path === "/api/traening";
+const isTrainingPath = (path: string) =>
+  path === "/traening" || path.startsWith("/traening/") || path === "/api/traening" || path === "/api/traening/fotos";
 
 /** Sider der skal kunne nås uden login. */
 const isPublicPath = (path: string) => path === "/login" || path === "/api/login" || path.startsWith("/t/");
