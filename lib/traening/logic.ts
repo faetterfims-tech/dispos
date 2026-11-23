@@ -2,6 +2,7 @@
  * Ren logik til træningsloggen (ingen afhængigheder, testet i logic.test.ts).
  */
 import type { Exercise, Unit } from "./program";
+import { startWeight, stepFor, weightForReps, workingReps, type LoadContext } from "./loads";
 
 export interface SetEntry {
   /** Vægt i kg. For kropsvægtsøvelser: ekstra vægt (oftest 0). */
@@ -166,18 +167,38 @@ export function progressSeries(sessions: Session[], ex: Exercise): { date: strin
 /** Mindste spring på justerbare håndvægte er typisk ca. 2 kg. */
 export const KG_STEP = 2;
 
-/** Hvad skal der stå i felterne i dag, og hvad er målet — ud fra sidste gang. */
-export function suggest(ex: Exercise, last: ExerciseLog | null): { sets: SetEntry[]; hint: string } {
+export interface Suggestion {
+  sets: SetEntry[];
+  hint: string;
+  /** Første sæt er et testsæt: tag så mange som muligt, så beregnes resten. */
+  test?: boolean;
+}
+
+/** Hvad skal der stå i felterne i dag, og hvad er målet — ud fra sidste gang (og profilen første gang). */
+export function suggest(ex: Exercise, last: ExerciseLog | null, ctx: LoadContext = {}): Suggestion {
   const [lo, hi] = ex.target;
   if (!last || !last.sets.length) {
-    const startKg = ex.unit === "kg" ? 0 : 0;
-    return {
-      sets: Array.from({ length: ex.sets }, () => ({ kg: startKg, reps: ex.unit === "kg" ? lo : 0 })),
-      hint:
-        ex.unit === "kg"
-          ? `Første gang: find en vægt, hvor du kan tage ${lo}–${hi} gange, og hvor de sidste føles hårde.`
-          : "Første gang: skriv ned, hvad du kan, så har du noget at slå næste gang.",
-    };
+    if (ex.unit === "kg") {
+      const kg = startWeight(ex, ctx);
+      const reps = workingReps(ex);
+      const noBody = !ctx.bodyKg ? " Skriv din vægt under ⚖️ Vægt for et bedre gæt." : "";
+      return {
+        test: true,
+        sets: Array.from({ length: ex.sets }, (_, i) => ({ kg, reps: i === 0 ? 0 : reps })),
+        hint: `Første gang: sæt 1 er et testsæt med ${fmtKg(kg)} kg. Tag så mange, du kan med god teknik, og stop, når 1–2 mere ville være svært. Så beregner appen vægten til resten.${noBody}`,
+      };
+    }
+    if (ex.unit === "reps" || ex.unit === "sek") {
+      return {
+        test: true,
+        sets: Array.from({ length: ex.sets }, () => ({ kg: 0, reps: 0 })),
+        hint:
+          ex.unit === "sek"
+            ? "Første gang: hold så længe, du kan, i sæt 1. Så foreslår appen tiden til resten."
+            : "Første gang: tag så mange, du kan, med god teknik i sæt 1. Så foreslår appen antallet til resten.",
+      };
+    }
+    return { sets: [{ kg: 0, reps: lo }], hint: `Første gang: gå efter ${lo} runder.` };
   }
 
   const prev = last.sets;
@@ -187,20 +208,41 @@ export function suggest(ex: Exercise, last: ExerciseLog | null): { sets: SetEntr
     case "kg": {
       const topKg = Math.max(...prev.map((s) => s.kg));
       const atTop = prev.filter((s) => s.kg === topKg);
+      const best = Math.max(...atTop.map((s) => s.reps));
+      const avg = atTop.reduce((a, s) => a + s.reps, 0) / atTop.length;
+      const step = stepFor(topKg);
+      const reps = workingReps(ex);
+      const all = (kg: number, r: number) => Array.from({ length: Math.max(ex.sets, prev.length) }, () => ({ kg, reps: r }));
+
+      // Alle sæt nåede toppen: mere vægt. Langt over: et større spring.
       if (atTop.length >= Math.min(ex.sets, prev.length) && atTop.every((s) => s.reps >= hi)) {
+        const jump = best >= hi + 3 ? Math.max(topKg + step, weightForReps(topKg, best, reps)) : topKg + step;
+        const big = jump > topKg + step;
         return {
-          sets: Array.from({ length: Math.max(ex.sets, prev.length) }, () => ({ kg: topKg + KG_STEP, reps: lo })),
-          hint: `Alle sæt nåede ${hi} sidst. Gå op til ${fmtKg(topKg + KG_STEP)} kg, og start forfra på ${lo}.`,
+          sets: all(jump, big ? reps : lo),
+          hint: big
+            ? `Du tog ${best} med ${fmtKg(topKg)} kg, så det er for let. Gå op til ${fmtKg(jump)} kg, og gå efter ${reps} gange.`
+            : `Alle sæt nåede ${hi} sidst. Gå op til ${fmtKg(jump)} kg, og start forfra på ${lo}.`,
         };
       }
+      // Langt under: mindre vægt.
+      if (avg < lo - 1 && topKg > 1) {
+        const drop = Math.min(topKg - stepFor(topKg - 1), weightForReps(topKg, best, reps));
+        const kg = Math.max(1, drop);
+        return { sets: all(kg, reps), hint: `For tungt sidst (${fmtKg(topKg)} kg, under ${lo} gange). Gå ned til ${fmtKg(kg)} kg, og gå efter ${reps} gange.` };
+      }
       if (atTop.some((s) => s.reps < lo) && topKg > KG_STEP) {
-        return { sets: fill(topKg, lo), hint: `Under ${lo} gange sidst. Bliv på ${fmtKg(topKg)} kg (eller gå lidt ned), og byg op igen.` };
+        return { sets: fill(topKg, lo), hint: `Lidt under ${lo} gange sidst. Bliv på ${fmtKg(topKg)} kg, og byg op igen.` };
       }
       return { sets: fill(topKg, lo).map((s) => ({ ...s, reps: Math.min(hi, s.reps + 1) })), hint: `Bliv på ${fmtKg(topKg)} kg, og tag 1 gang mere i hvert sæt.` };
     }
     case "reps": {
       const total = prev.reduce((s, x) => s + x.reps, 0);
-      return { sets: fill(prev[0]?.kg ?? 0, lo).map((s) => ({ ...s, reps: s.reps + 1 })), hint: `Sidst ${total} i alt. Prøv at slå det med bare 1–2.` };
+      const allTop = prev.length >= ex.sets && prev.every((s) => s.reps >= hi);
+      return {
+        sets: fill(prev[0]?.kg ?? 0, lo).map((s) => ({ ...s, reps: s.reps + 1 })),
+        hint: allTop ? `Alle sæt nåede ${hi}. Gør øvelsen sværere (se tippet), eller tag den langsommere.` : `Sidst ${total} i alt. Prøv at slå det med bare 1–2.`,
+      };
     }
     case "sek": {
       const best = Math.max(...prev.map((s) => s.reps));
