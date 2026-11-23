@@ -2,13 +2,14 @@ import "server-only";
 import type { BodyEntry, NextPointer, Session } from "./traening/logic";
 import { keyPrefix } from "./traening/invite-core";
 import { isEquip, isProgramId, type Equip, type ProgramId } from "./traening/program";
+import { isLevel, isSex, type Profile } from "./traening/loads";
 import { del, hdel, hgetall, hset } from "./store";
 
 /**
  * Data pr. bruger i Upstash Redis:
  *   <præfiks>sessions → { id: Session-JSON }
  *   <præfiks>body     → { dato: BodyEntry-JSON }
- *   <præfiks>meta     → { next: NextPointer-JSON, program: "udstyr" | "kropsvaegt", equipment: Equip[]-JSON }
+ *   <præfiks>meta     → { next: NextPointer-JSON, program: "udstyr" | "kropsvaegt", equipment: Equip[]-JSON, profile: Profile-JSON }
  * Præfikset er "traening:" for ejeren og "traening:u:<id>:" for inviterede.
  */
 const keys = (userId: string) => {
@@ -28,7 +29,7 @@ function parseAll<T>(hash: Record<string, string>): T[] {
   return out;
 }
 
-export async function loadAll(userId: string): Promise<{ sessions: Session[]; body: BodyEntry[]; next: NextPointer | null; program: ProgramId; equipment: Equip[] | null }> {
+export async function loadAll(userId: string): Promise<{ sessions: Session[]; body: BodyEntry[]; next: NextPointer | null; program: ProgramId; equipment: Equip[] | null; profile: Profile | null }> {
   const k = keys(userId);
   const [s, b, m] = await Promise.all([hgetall(k.sessions), hgetall(k.body), hgetall(k.meta)]);
   let next: NextPointer | null = null;
@@ -44,9 +45,17 @@ export async function loadAll(userId: string): Promise<{ sessions: Session[]; bo
   } catch {
     equipment = null;
   }
+  let profile: Profile | null = null;
+  try {
+    const p = m.profile ? (JSON.parse(m.profile) as Record<string, unknown>) : null;
+    profile = p && isLevel(p.level) ? { level: p.level, ...(isSex(p.sex) ? { sex: p.sex } : {}) } : null;
+  } catch {
+    profile = null;
+  }
   return {
     next,
     equipment,
+    profile,
     program: isProgramId(m.program) ? m.program : "udstyr",
     sessions: parseAll<Session>(s).sort((a, b) => b.date.localeCompare(a.date)),
     body: parseAll<BodyEntry>(b).sort((a, b) => a.date.localeCompare(b.date)),
@@ -72,3 +81,4 @@ export async function deleteAllData(userId: string): Promise<void> {
 }
 export const saveProgram = (userId: string, program: ProgramId) => hset(keys(userId).meta, { program });
 export const saveEquipment = (userId: string, equipment: Equip[]) => hset(keys(userId).meta, { equipment: JSON.stringify(equipment) });
+export const saveProfile = (userId: string, profile: Profile) => hset(keys(userId).meta, { profile: JSON.stringify(profile) });

@@ -1257,3 +1257,38 @@ button.danger {
   background: var(--good);
   border-color: var(--good);
 }
+
+/* Vægtforslag og profil */
+.tr-set-no.test {
+  font-size: 0.72rem;
+  color: #b7791f;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.tr-field-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0.8rem 0 0.35rem;
+}
+
+.tr-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.tr-choice button {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 2px solid var(--border);
+  min-height: 42px;
+  padding: 0.35rem 0.9rem;
+  font-weight: 600;
+  border-radius: 10px;
+}
+
+.tr-choice button[aria-pressed="true"] {
+  border-color: var(--good);
+  background: color-mix(in srgb, var(--good) 10%, var(--surface));
+}

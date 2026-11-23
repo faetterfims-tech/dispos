@@ -36,6 +36,7 @@ import {
   type Session,
 } from "@/lib/traening/logic";
 import LineChart from "./LineChart";
+import { LEVELS, afterTest, type LoadContext, type Profile, type Sex } from "@/lib/traening/loads";
 import WarmupTimer from "./WarmupTimer";
 import { fmtDuration, fmtMinutes, splitTime, type Interval } from "@/lib/traening/timing";
 
@@ -48,6 +49,12 @@ interface SetDraft {
   startedAt?: number;
   /** Sættets varighed i sekunder. */
   sec?: number;
+  /** Testsæt (første gang): tag så mange som muligt, så beregnes resten. */
+  test?: boolean;
+  /** Feltet er stadig udfyldt af appen (ikke rettet af brugeren). */
+  auto?: boolean;
+  /** Testresultat, som resten allerede er beregnet ud fra ("kg×antal"). */
+  applied?: string;
 }
 interface WorkoutInterval extends Interval {
   kind: "set" | "opvarmning";
@@ -74,6 +81,8 @@ interface Data {
   program?: ProgramId;
   /** Det udstyr, personen har. null = ikke valgt endnu. */
   equipment?: Equip[] | null;
+  /** Erfaring og køn til vægtforslag. */
+  profile?: Profile | null;
   /** Hvem er logget ind (ejeren eller en inviteret). */
   me?: { name: string; owner: boolean };
 }
@@ -123,21 +132,56 @@ const equipOf = (data: { program?: ProgramId; equipment?: Equip[] | null } | nul
 /** Passene i programmet, der passer til udstyret, i den rækkefølge de tages. Der er ingen faste ugedage. */
 const orderOf = (data: { program?: ProgramId; equipment?: Equip[] | null } | null) => orderFor(programFor(equipOf(data)));
 
+/** Til vægtforslag: seneste kropsvægt og profil. */
+const ctxOf = (data: { body?: BodyEntry[]; profile?: Profile | null } | null): LoadContext => {
+  const w = [...(data?.body ?? [])].reverse().find((b) => b.weightKg)?.weightKg;
+  return { ...(w ? { bodyKg: w } : {}), ...(data?.profile ? { profile: data.profile } : {}) };
+};
+
+/** Når et testsæt er lavet: beregn resten af sættene (kun felter, brugeren ikke selv har rettet). Returnerer samme objekt, hvis intet ændres. */
+function applyTests(d: Draft, exercises: Exercise[]): Draft {
+  let changed = false;
+  const sets = { ...d.sets };
+  for (const ex of exercises) {
+    const rows = sets[ex.id];
+    const t = rows?.[0];
+    if (!t?.test || !t.done) continue;
+    const kg = t.kg ? toNum(t.kg) : 0;
+    const reps = toNum(t.reps);
+    if (!Number.isFinite(reps) || reps <= 0) continue;
+    const key = `${kg}x${reps}`;
+    if (t.applied === key) continue;
+    const r = afterTest(ex, kg, reps);
+    sets[ex.id] = rows.map((row, i) =>
+      i === 0
+        ? { ...row, applied: key }
+        : row.done || !row.auto
+          ? row
+          : { ...row, ...(ex.unit === "kg" && r.kg ? { kg: fmtKg(r.kg) } : {}), reps: String(r.reps) },
+    );
+    changed = true;
+  }
+  return changed ? { ...d, sets } : d;
+}
+
 /** Et pas tilpasset udstyret. */
 const dayFor = (id: string, equip: Equip[]) => {
   const d = dayById(id);
   return d ? resolveDay(d, equip) : undefined;
 };
 
-function buildDraft(date: string, dayId: string, sessions: Session[], equip: Equip[]): Draft {
+function buildDraft(date: string, dayId: string, sessions: Session[], equip: Equip[], ctx: LoadContext = {}): Draft {
   const day = dayFor(dayId, equip) ?? resolveDay(DAYS[0], equip);
   const sets: Record<string, SetDraft[]> = {};
   for (const ex of day.exercises) {
     const last = lastLog(sessions, ex.id, date);
-    sets[ex.id] = suggest(ex, last?.log ?? null).sets.map((s) => ({
+    const sug = suggest(ex, last?.log ?? null, ctx);
+    sets[ex.id] = sug.sets.map((s, i) => ({
       kg: ex.unit === "kg" && s.kg ? fmtKg(s.kg) : "",
       reps: s.reps ? String(s.reps) : "",
       done: false,
+      auto: true,
+      ...(sug.test && i === 0 ? { test: true } : {}),
     }));
   }
   return { date, dayId: day.id, sets, warmup: RYG_OPVARMNING.map(() => false), note: "" };
@@ -172,13 +216,13 @@ export default function TrainingLog() {
         }
         if (!res.ok) throw new Error(body.error ?? `Fejl ${res.status}`);
         if (!body.configured) {
-          const local = load<{ sessions: Session[]; body: BodyEntry[]; next?: NextPointer | null; program?: ProgramId; equipment?: Equip[] | null }>(STORAGE.local);
-          setData({ configured: false, sessions: local?.sessions ?? [], body: local?.body ?? [], next: local?.next ?? null, program: local?.program ?? "udstyr", equipment: local?.equipment ?? null });
+          const local = load<{ sessions: Session[]; body: BodyEntry[]; next?: NextPointer | null; program?: ProgramId; equipment?: Equip[] | null; profile?: Profile | null }>(STORAGE.local);
+          setData({ configured: false, sessions: local?.sessions ?? [], body: local?.body ?? [], next: local?.next ?? null, program: local?.program ?? "udstyr", equipment: local?.equipment ?? null, profile: local?.profile ?? null });
         } else setData({ ...body, next: body.next ?? null });
       } catch (e) {
         setError(e instanceof Error ? e.message : "Kunne ikke hente loggen.");
-        const local = load<{ sessions: Session[]; body: BodyEntry[]; next?: NextPointer | null; program?: ProgramId; equipment?: Equip[] | null }>(STORAGE.local);
-        setData({ configured: false, sessions: local?.sessions ?? [], body: local?.body ?? [], next: local?.next ?? null, program: local?.program ?? "udstyr", equipment: local?.equipment ?? null });
+        const local = load<{ sessions: Session[]; body: BodyEntry[]; next?: NextPointer | null; program?: ProgramId; equipment?: Equip[] | null; profile?: Profile | null }>(STORAGE.local);
+        setData({ configured: false, sessions: local?.sessions ?? [], body: local?.body ?? [], next: local?.next ?? null, program: local?.program ?? "udstyr", equipment: local?.equipment ?? null, profile: local?.profile ?? null });
       }
     })();
   }, []);
@@ -194,7 +238,7 @@ export default function TrainingLog() {
     if (saved && saved.date === today() && fits(saved)) setDraft(saved);
     else {
       const d = today();
-      setDraft(buildDraft(d, upNext(data.sessions, data.next, orderOf(data)), data.sessions, equipOf(data)));
+      setDraft(buildDraft(d, upNext(data.sessions, data.next, orderOf(data)), data.sessions, equipOf(data), ctxOf(data)));
     }
   }, [data, draft]);
 
@@ -203,7 +247,7 @@ export default function TrainingLog() {
   }, [draft]);
 
   const persistLocal = useCallback((next: Data) => {
-    if (!next.configured) save(STORAGE.local, { sessions: next.sessions, body: next.body, next: next.next, program: next.program, equipment: next.equipment ?? null });
+    if (!next.configured) save(STORAGE.local, { sessions: next.sessions, body: next.body, next: next.next, program: next.program, equipment: next.equipment ?? null, profile: next.profile ?? null });
   }, []);
 
   const showFlash = (msg: string) => {
@@ -260,7 +304,7 @@ export default function TrainingLog() {
       setData(next);
       persistLocal(next);
       save(STORAGE.draft, null);
-      setDraft(buildDraft(today(), nextInOrder(saved.dayId, orderOf(data)), next.sessions, equipOf(data)));
+      setDraft(buildDraft(today(), nextInOrder(saved.dayId, orderOf(data)), next.sessions, equipOf(data), ctxOf(data)));
       showFlash("Træningen er gemt. Godt gået! 💪");
       setTab("historik");
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -281,10 +325,26 @@ export default function TrainingLog() {
       const next = { ...data, next: pointer };
       setData(next);
       persistLocal(next);
-      setDraft(buildDraft(today(), dayId, data.sessions, equipOf(data)));
+      setDraft(buildDraft(today(), dayId, data.sessions, equipOf(data), ctxOf(data)));
       showFlash(`Sprunget over. Næste pas er ${dayById(dayId)?.name ?? dayId}.`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Kunne ikke springe over.");
+    }
+  }
+
+  /** Gem profilen (erfaring/køn). Dagens forslag opdateres, hvis træningen ikke er startet. */
+  async function saveProfile(profile: Profile) {
+    if (!data || !draft) return;
+    setError(null);
+    try {
+      if (data.configured) await api("POST", { kind: "profile", ...profile });
+      const next = { ...data, profile };
+      setData(next);
+      persistLocal(next);
+      if (!draft.workout) setDraft(buildDraft(draft.date, draft.dayId, data.sessions, equipOf(data), ctxOf(next)));
+      showFlash("Gemt");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Kunne ikke gemme.");
     }
   }
 
@@ -300,7 +360,7 @@ export default function TrainingLog() {
       if (!draft.workout) {
         const order = orderFor(programFor(equipment));
         const dayId = order.includes(draft.dayId) ? draft.dayId : upNext(data.sessions, data.next, order);
-        setDraft(buildDraft(draft.date, dayId, data.sessions, equipment));
+        setDraft(buildDraft(draft.date, dayId, data.sessions, equipment, ctxOf(data)));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Kunne ikke gemme udstyret.");
@@ -337,6 +397,8 @@ export default function TrainingLog() {
       const next = { ...data, body: [...data.body.filter((b) => b.date !== saved.date), merged].sort((a, b) => a.date.localeCompare(b.date)) };
       setData(next);
       persistLocal(next);
+      // Ny kropsvægt giver et bedre startgæt, så længe dagens træning ikke er startet.
+      if (draft && !draft.workout) setDraft(buildDraft(draft.date, draft.dayId, next.sessions, equipOf(next), ctxOf(next)));
       showFlash("Gemt");
       return true;
     } catch (e) {
@@ -400,18 +462,19 @@ export default function TrainingLog() {
           saving={saving}
           onChange={setDraft}
           update={(fn) => setDraft((d) => (d ? fn(d) : d))}
-          onPick={(date, dayId) => setDraft(buildDraft(date, dayId, data.sessions, equipOf(data)))}
+          onPick={(date, dayId) => setDraft(buildDraft(date, dayId, data.sessions, equipOf(data), ctxOf(data)))}
           onSave={saveSession}
           onSkip={skipPass}
           upNextId={upNext(data.sessions, data.next, orderOf(data))}
           order={orderOf(data)}
           equipment={equipOf(data)}
+          loadCtx={ctxOf(data)}
           equipmentChosen={data.equipment != null}
           onEquipment={chooseEquipment}
         />
       )}
       {tab === "fremgang" && <ProgressTab sessions={data.sessions} body={data.body} />}
-      {tab === "krop" && <BodyTab body={data.body} onSave={saveBodyEntry} onDelete={removeBody} />}
+      {tab === "krop" && <BodyTab body={data.body} onSave={saveBodyEntry} onDelete={removeBody} profile={data.profile ?? null} onProfile={saveProfile} />}
       {tab === "historik" && <HistoryTab sessions={data.sessions} onDelete={removeSession} />}
       {tab === "inviter" && owner && <InviteTab />}
     </div>
@@ -485,6 +548,7 @@ export function TrainTab({
   update,
   order,
   equipment,
+  loadCtx,
   equipmentChosen,
   onEquipment,
 }: {
@@ -500,6 +564,7 @@ export function TrainTab({
   upNextId: string;
   order: string[];
   equipment: Equip[];
+  loadCtx: LoadContext;
   equipmentChosen: boolean;
   onEquipment: (e: Equip[]) => void;
 }) {
@@ -508,6 +573,11 @@ export function TrainTab({
   const total = day.exercises.reduce((n, ex) => n + (draft.sets[ex.id]?.length ?? 0), 0);
   const doneSets = day.exercises.reduce((n, ex) => n + (draft.sets[ex.id]?.filter((s) => s.done).length ?? 0), 0);
   const warm = draft.warmup ?? RYG_OPVARMNING.map(() => false);
+
+  // Når et testsæt er lavet, beregnes resten af sættene.
+  useEffect(() => {
+    if (applyTests(draft, day.exercises) !== draft) update((d) => applyTests(d, day.exercises));
+  }, [draft, day.exercises, update]);
   /** En kommende dag, man kigger på. Rører ikke dagens igangværende træning. */
   const [preview, setPreview] = useState<string | null>(null);
   /** Åben timer: "all" = hele opvarmningen, tal = én øvelse. */
@@ -595,7 +665,7 @@ export function TrainTab({
 
   const setRow = (exId: string, i: number, patch: Partial<SetDraft>) => {
     const rows = [...(draft.sets[exId] ?? [])];
-    rows[i] = { ...rows[i], ...patch };
+    rows[i] = { ...rows[i], ...patch, ...("kg" in patch || "reps" in patch ? { auto: false } : {}) };
     onChange({ ...draft, sets: { ...draft.sets, [exId]: rows } });
   };
   const addRow = (exId: string) => {
@@ -741,8 +811,11 @@ export function TrainTab({
 
       {day.exercises.map((ex, idx) => {
         const last = lastLog(sessions, ex.id, draft.date);
-        const tip = suggest(ex, last?.log ?? null);
         const rows = draft.sets[ex.id] ?? [];
+        const tip = suggest(ex, last?.log ?? null, loadCtx);
+        const testRow = rows[0]?.test ? rows[0] : null;
+        const testDone = !!testRow?.done && toNum(testRow.reps) > 0;
+        const testNote = testDone && testRow ? afterTest(ex, testRow.kg ? toNum(testRow.kg) : 0, toNum(testRow.reps)).note : null;
         const showKg = ex.unit === "kg";
         const allDone = rows.length > 0 && rows.every((r) => r.done);
         return (
@@ -777,7 +850,7 @@ export function TrainTab({
                   {fmtSets(ex, last.log.sets)} <span className="small">({fmtDate(last.date)})</span>
                 </div>
               )}
-              <div className="tr-goal-hint">👉 {tip.hint}</div>
+              <div className="tr-goal-hint">👉 {testNote ?? tip.hint}</div>
             </div>
 
             <div className={`tr-sets${locked ? " locked" : ""}`}>
@@ -789,7 +862,7 @@ export function TrainTab({
               </div>
               {rows.map((r, i) => (
                 <div key={i} className={`tr-set-row${showKg ? "" : " no-kg"}${r.done ? " done" : ""}`}>
-                  <span className="tr-set-no">{i + 1}</span>
+                  <span className={`tr-set-no${r.test ? " test" : ""}`}>{r.test ? "Test" : i + 1}</span>
                   {showKg && (
                     <input
                       inputMode="decimal"
@@ -803,7 +876,7 @@ export function TrainTab({
                   )}
                   <input
                     inputMode="numeric"
-                    placeholder="0"
+                    placeholder={r.test ? "maks" : "0"}
                     value={r.reps}
                     disabled={locked}
                     onFocus={(e) => e.target.select()}
@@ -1107,14 +1180,56 @@ function ProgressTab({ sessions, body }: { sessions: Session[]; body: BodyEntry[
 
 /* ---------- Vægt og mål ---------- */
 
+function ProfileCard({ profile, onSave }: { profile: Profile | null; onSave: (p: Profile) => void }) {
+  const level = profile?.level;
+  const sex = profile?.sex;
+  const save = (nextLevel: Profile["level"], nextSex: Sex | undefined) => onSave(nextSex ? { level: nextLevel, sex: nextSex } : { level: nextLevel });
+  return (
+    <div className="card">
+      <h2>Om dig</h2>
+      <p className="small" style={{ marginTop: 0 }}>
+        Bruges til at gætte en startvægt til hver øvelse første gang. Din kropsvægt tages fra målingerne herunder. Gættet er forsigtigt, og testsættet retter det
+        til.
+      </p>
+      <div className="tr-field-label">Hvor meget har du trænet styrke?</div>
+      <div className="tr-choice">
+        {LEVELS.map((l) => (
+          <button key={l.id} aria-pressed={level === l.id} onClick={() => save(l.id, sex)} title={l.hint}>
+            {l.name}
+          </button>
+        ))}
+      </div>
+      <div className="tr-field-label">Køn (valgfrit, giver et bedre gæt)</div>
+      <div className="tr-choice">
+        {(
+          [
+            ["mand", "Mand"],
+            ["kvinde", "Kvinde"],
+            [undefined, "Vil ikke sige"],
+          ] as [Sex | undefined, string][]
+        ).map(([id, name]) => (
+          <button key={name} aria-pressed={!!level && sex === id} disabled={!level} onClick={() => save(level ?? "ny", id)}>
+            {name}
+          </button>
+        ))}
+      </div>
+      {!level && <p className="small" style={{ margin: "0.5rem 0 0" }}>Vælg først, hvor meget du har trænet.</p>}
+    </div>
+  );
+}
+
 function BodyTab({
   body,
   onSave,
   onDelete,
+  profile,
+  onProfile,
 }: {
   body: BodyEntry[];
   onSave: (e: { date: string; weightKg: string; waistCm: string }) => Promise<boolean>;
   onDelete: (date: string) => void;
+  profile: Profile | null;
+  onProfile: (p: Profile) => void;
 }) {
   const [form, setForm] = useState({ date: today(), weightKg: "", waistCm: "" });
   const weights = body.filter((b) => b.weightKg).map((b) => ({ date: b.date, value: b.weightKg! }));
@@ -1122,6 +1237,8 @@ function BodyTab({
 
   return (
     <>
+      <ProfileCard profile={profile} onSave={onProfile} />
+
       <div className="card">
         <h2>Vej og mål dig</h2>
         <p className="small" style={{ marginTop: 0 }}>
