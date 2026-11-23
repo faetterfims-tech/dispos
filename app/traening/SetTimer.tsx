@@ -42,6 +42,7 @@ export default function SetTimer({
   sets,
   onFlow,
   onStartSet,
+  onStartNow,
   onFinishSet,
   onEdit,
   beep,
@@ -54,6 +55,7 @@ export default function SetTimer({
   sets: Record<string, TimerRow[]>;
   onFlow: (f: Flow | null) => void;
   onStartSet: (exId: string, i: number) => void;
+  onStartNow: (exId: string, i: number) => void;
   onFinishSet: () => void;
   onEdit: (exId: string, i: number, patch: { kg?: string; reps?: string }) => void;
   beep: (freq: number, ms: number) => void;
@@ -61,11 +63,13 @@ export default function SetTimer({
   sound: boolean;
   onSound: (on: boolean) => void;
 }) {
-  const [now, setNow] = useState(Date.now());
+  // Tikker for at tegne igen; selve tiden læses direkte, så den aldrig er forældet.
+  const [, setTick] = useState(0);
   useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 200);
+    const t = setInterval(() => setTick((n) => n + 1), 200);
     return () => clearInterval(t);
   }, []);
+  const now = Date.now();
   useWakeLock(true);
 
   const lastCue = useRef<string>("");
@@ -78,10 +82,19 @@ export default function SetTimer({
   const row = flow.kind === "rest" || !ex ? null : (sets[ex.id] ?? [])[flow.i];
   const tempo = ex ? tempoFor(ex) : null;
   const elapsed = row?.startedAt ? now - row.startedAt : 0;
-  const tState = tempo && flow.kind === "set" ? tempoState(elapsed, tempo) : null;
+  /** Sekunder tilbage af nedtællingen før sættet (0 = sættet er i gang). */
+  const countdown = flow.kind === "set" && elapsed < 0 ? Math.min(5, Math.ceil(-elapsed / 1000)) : 0;
+  const tState = tempo && flow.kind === "set" && countdown === 0 ? tempoState(elapsed, tempo) : null;
   const restLeft = flow.kind === "rest" ? Math.ceil((flow.until - now) / 1000) : 0;
 
   useEffect(() => {
+    if (flow.kind === "set" && countdown > 0) {
+      const key = `cd-${countdown}`;
+      if (key !== lastCue.current) {
+        lastCue.current = key;
+        say(countdown <= 3 ? 660 : 520, 120);
+      }
+    }
     if (flow.kind === "set" && tState) {
       const key = `${tState.reps}-${tState.phase}`;
       if (key !== lastCue.current) {
@@ -188,6 +201,37 @@ export default function SetTimer({
     else onFlow({ kind: "rest", until: Date.now() + rest * 1000, afterExId: ex.id });
   }} />;
 
+  /* ----- Nedtælling før sættet ----- */
+  if (flow.kind === "set" && countdown > 0) {
+    return (
+      <div className="tr-timer" style={{ "--c": COLORS.pause } as CSSProperties} role="dialog" aria-label="Gør klar">
+        <div className="tr-timer-top">
+          <span>
+            {ex.name} · sæt {flow.i + 1} af {total}
+          </span>
+          <button className="tr-timer-x" onClick={() => onFlow(null)} aria-label="Skjul timeren">
+            ✕
+          </button>
+        </div>
+        <div className="tr-timer-mid">
+          <div className="tr-timer-sub">Mål: {target}</div>
+          <div className="tr-timer-big" aria-live="polite">
+            {countdown}
+          </div>
+          <div className="tr-timer-title">Stil dig klar</div>
+        </div>
+        <div className="tr-timer-buttons">
+          <button className="tr-timer-main" onClick={() => onStartNow(ex.id, flow.i)}>
+            Start nu
+          </button>
+          <button className="tr-timer-skip" onClick={() => onSound(!sound)} aria-pressed={sound}>
+            {sound ? "🔊 Lyd" : "🔇 Lyd"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   /* ----- I sættet ----- */
   const color = tState ? COLORS[tState.phase] : COLORS.hold;
   return (
@@ -213,7 +257,7 @@ export default function SetTimer({
         ) : (
           <>
             <div className="tr-timer-big" aria-live="polite">
-              {fmtDuration(Math.floor(elapsed / 1000))}
+              {fmtDuration(Math.max(0, Math.floor(elapsed / 1000)))}
             </div>
             <div className="tr-timer-title">Hold</div>
           </>
@@ -223,7 +267,7 @@ export default function SetTimer({
         <button
           className="tr-timer-main"
           onClick={() => {
-            const counted = tState ? tState.reps : Math.floor(elapsed / 1000);
+            const counted = tState ? tState.reps : Math.max(0, Math.floor(elapsed / 1000));
             onFinishSet();
             onFlow({ kind: "confirm", exId: ex.id, i: flow.i, counted });
           }}

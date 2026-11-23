@@ -123,6 +123,9 @@ const addDays = (d: string, n: number) => {
   return x.toISOString().slice(0, 10);
 };
 
+/** Nedtælling, før et sæt går i gang (tid til at stille sig klar). */
+const SET_COUNTDOWN_MS = 5000;
+
 /** Overskrift på tal-feltet. */
 const COUNT_LABEL: Record<Unit, string> = { kg: "antal", reps: "antal", sek: "sekunder", runder: "runder" };
 const WEEKDAYS = ["Man", "Tir", "Ons", "Tor", "Fre", "Lør", "Søn"];
@@ -622,19 +625,32 @@ export function TrainTab({
   const closeRunning = (d: Draft, now: number): Draft => {
     const sets: Record<string, SetDraft[]> = {};
     for (const [k, rows] of Object.entries(d.sets))
-      sets[k] = rows.map((r) => (r.startedAt && !r.done ? { ...r, done: true, startedAt: undefined, sec: Math.round((now - r.startedAt) / 1000) } : r));
+      sets[k] = rows.map((r) => (r.startedAt && !r.done ? { ...r, done: true, startedAt: undefined, sec: Math.max(0, Math.round((now - r.startedAt) / 1000)) } : r));
     const intervals = (d.workout?.intervals ?? []).map((iv) => (iv.kind === "set" && iv.end === undefined ? { ...iv, end: now } : iv));
     return { ...d, sets, workout: d.workout ? { ...d.workout, intervals } : d.workout };
   };
 
-  const startSet = (exId: string, i: number) =>
+  /** Start et sæt. Med nedtælling begynder sættet (og den aktive tid) først efter `countdownMs`. */
+  const startSet = (exId: string, i: number, countdownMs = SET_COUNTDOWN_MS) =>
     update((d) => {
       const now = Date.now();
+      const at = now + countdownMs;
       const base = d.workout ? d : { ...d, workout: { startedAt: now, intervals: [] } };
       const c = closeRunning(base, now);
       const rows = [...(c.sets[exId] ?? [])];
-      rows[i] = { ...rows[i], startedAt: now, done: false, sec: undefined };
-      return { ...c, sets: { ...c.sets, [exId]: rows }, workout: { ...c.workout!, intervals: [...c.workout!.intervals, { start: now, kind: "set" }] } };
+      rows[i] = { ...rows[i], startedAt: at, done: false, sec: undefined };
+      return { ...c, sets: { ...c.sets, [exId]: rows }, workout: { ...c.workout!, intervals: [...c.workout!.intervals, { start: at, kind: "set" }] } };
+    });
+  /** Spring nedtællingen over: sættet starter nu. */
+  const startNow = (exId: string, i: number) =>
+    update((d) => {
+      const now = Date.now();
+      const rows = [...(d.sets[exId] ?? [])];
+      const old = rows[i]?.startedAt;
+      if (!old || old <= now) return d;
+      rows[i] = { ...rows[i], startedAt: now };
+      const intervals = (d.workout?.intervals ?? []).map((iv) => (iv.kind === "set" && iv.end === undefined && iv.start === old ? { ...iv, start: now } : iv));
+      return { ...d, sets: { ...d.sets, [exId]: rows }, workout: d.workout ? { ...d.workout, intervals } : d.workout };
     });
   const finishSet = () => update((d) => closeRunning(d, Date.now()));
   const undoSet = (exId: string, i: number) =>
@@ -963,7 +979,8 @@ export function TrainTab({
           exercises={day.exercises}
           sets={draft.sets}
           onFlow={setFlow}
-          onStartSet={startSet}
+          onStartSet={(exId, i) => startSet(exId, i)}
+          onStartNow={startNow}
           onFinishSet={finishSet}
           onEdit={(exId, i, patch) => setRow(exId, i, patch)}
           beep={beep}
