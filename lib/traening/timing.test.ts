@@ -34,3 +34,17 @@ test("formatering", () => {
   assert.equal(fmtMinutes(2700), "45 min");
   assert.equal(fmtMinutes(3900), "1 t 5 min");
 });
+
+test("rytme: 2 sek ned, 1 sek op, gentagelser tælles", async () => {
+  const { tempoState, tempoFor, restFor } = await import("./timing");
+  const { exerciseById } = await import("./program");
+  const t = tempoFor(exerciseById("goblet")!)!;
+  assert.deepEqual(tempoState(0, t), { phase: "ned", left: 2, reps: 0 });
+  assert.deepEqual(tempoState(1500, t), { phase: "ned", left: 1, reps: 0 });
+  assert.deepEqual(tempoState(2100, t), { phase: "op", left: 1, reps: 0 });
+  assert.deepEqual(tempoState(3000, t), { phase: "ned", left: 2, reps: 1 });
+  assert.equal(tempoState(30_500, t).reps, 10);
+  assert.equal(tempoFor(exerciseById("planke")!), null);
+  assert.equal(restFor(exerciseById("goblet")!), 90);
+  assert.equal(restFor(exerciseById("curl")!), 60);
+});

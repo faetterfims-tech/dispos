@@ -862,6 +862,7 @@ button.danger {
 .tr-timer {
   position: fixed;
   inset: 0;
+  margin: 0 !important;
   z-index: 100;
   background: var(--c);
   color: #fff;
@@ -1339,4 +1340,71 @@ button.danger {
 
 .logout {
   margin-top: 2rem;
+}
+
+/* Sættimer */
+.tr-timer-phase {
+  font-size: min(30vw, 9rem);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.03em;
+}
+
+.tr-stepper {
+  display: flex;
+  align-items: center;
+  gap: 1.2rem;
+  margin-top: 0.6rem;
+}
+
+.tr-stepper button {
+  width: 64px;
+  height: 64px;
+  min-height: 0;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 2rem;
+  font-weight: 700;
+  background: rgb(255 255 255 / 0.15);
+  color: #fff;
+  border: 0;
+}
+
+.tr-stepper-value {
+  min-width: 4ch;
+  text-align: center;
+  font-size: 4.5rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.tr-stepper-value small {
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  opacity: 0.8;
+  margin-top: 0.3rem;
+}
+
+.tr-stepper.small .tr-stepper-value {
+  font-size: 2.6rem;
+}
+
+.tr-stepper.small button {
+  width: 52px;
+  height: 52px;
+  font-size: 1.6rem;
+}
+
+.tr-rest-chip {
+  width: 100%;
+  margin-bottom: 0.5rem;
+  min-height: 46px;
+  border-radius: 12px;
+  background: #5b5953;
+  border-color: #5b5953;
+  color: #fff;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
