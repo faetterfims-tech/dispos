@@ -41,6 +41,7 @@ import WarmupTimer from "./WarmupTimer";
 import SetTimer, { type Flow } from "./SetTimer";
 import { useBeeper } from "./device";
 import { AfterSaveModal, CompareModal, PhotosSection } from "./Photos";
+import { estimateCalories, fmtRange, kindOf, sessionCalories } from "@/lib/traening/calories";
 import { BODY_EVERY, COMPARE_EVERY, PHOTO_EVERY, daysBetween, isDue, pickComparison, type PhotoMeta } from "@/lib/traening/photos-core";
 import { fmtDuration, fmtMinutes, splitTime, type Interval } from "@/lib/traening/timing";
 
@@ -138,6 +139,12 @@ const equipOf = (data: { program?: ProgramId; equipment?: Equip[] | null } | nul
 
 /** Passene i programmet, der passer til udstyret, i den rækkefølge de tages. Der er ingen faste ugedage. */
 const orderOf = (data: { program?: ProgramId; equipment?: Equip[] | null } | null) => orderFor(programFor(equipOf(data)));
+
+/** Kropsvægt på en dato: seneste måling på eller før datoen, ellers den første. */
+const weightOn = (body: BodyEntry[], date: string): number | undefined => {
+  const ws = body.filter((b) => b.weightKg).sort((a, b) => a.date.localeCompare(b.date));
+  return [...ws].reverse().find((b) => b.date <= date)?.weightKg ?? ws[0]?.weightKg;
+};
 
 /** Til vægtforslag: seneste kropsvægt og profil. */
 const ctxOf = (data: { body?: BodyEntry[]; profile?: Profile | null } | null): LoadContext => {
@@ -525,7 +532,7 @@ export default function TrainingLog() {
         />
       )}
       {tab === "krop" && <BodyTab body={data.body} onSave={saveBodyEntry} onDelete={removeBody} profile={data.profile ?? null} onProfile={saveProfile} />}
-      {tab === "historik" && <HistoryTab sessions={data.sessions} onDelete={removeSession} />}
+      {tab === "historik" && <HistoryTab sessions={data.sessions} body={data.body} onDelete={removeSession} />}
       {tab === "inviter" && owner && <InviteTab />}
 
       {showCompare && (
@@ -804,7 +811,21 @@ export function TrainTab({
         )}
         {workout && split && (
           <div className="tr-clock">
-            <div className="tr-clock-big">⏱ {fmtDuration(split.totalSec)}</div>
+            <div>
+              <div className="tr-clock-big">⏱ {fmtDuration(split.totalSec)}</div>
+              <div className="tr-hero-meta">
+                🔥{" "}
+                {fmtRange(
+                  estimateCalories({
+                    kind: kindOf(day.id),
+                    bodyKg: loadCtx.bodyKg,
+                    totalSec: split.totalSec,
+                    activeSec: split.activeSec,
+                    rounds: (draft.sets.intervaller ?? []).filter((r) => r.done).reduce((n, r) => n + (Number(r.reps) || 0), 0),
+                  }),
+                )}
+              </div>
+            </div>
             {doneSets === 0 && (
               <button className="tr-link tr-link-light" onClick={cancelWorkout}>
                 Fortryd start
@@ -1262,6 +1283,10 @@ function ProgressTab({
   const week = weekStart(today());
   const perWeek = sessionsPerWeek(sessions);
   const thisWeek = perWeek.find((w) => w.week === week)?.count ?? 0;
+  const weekKcal = sessions
+    .filter((s) => weekStart(s.date) === week)
+    .map((s) => sessionCalories(s, weightOn(body, s.date)))
+    .reduce((a, r) => ({ low: a.low + r.low, high: a.high + r.high }), { low: 0, high: 0 });
   const weights = body.filter((b) => b.weightKg);
   const waists = body.filter((b) => b.waistCm);
   const dW = weights.length > 1 ? weights[weights.length - 1].weightKg! - weights[0].weightKg! : null;
@@ -1281,6 +1306,10 @@ function ProgressTab({
         <div className="card kpi">
           <div className="value">{sessions.length}</div>
           <div className="label">Træninger i alt</div>
+        </div>
+        <div className="card kpi" style={{ gridColumn: "1 / -1" }}>
+          <div className="value">{weekKcal.high ? `🔥 ${weekKcal.low.toLocaleString("da-DK")}–${weekKcal.high.toLocaleString("da-DK")}` : "–"}</div>
+          <div className="label">kcal forbrændt ved træning denne uge (skøn)</div>
         </div>
         <div className="card kpi">
           <div className="value">{dW === null ? "–" : signed(dW, "kg")}</div>
@@ -1463,7 +1492,7 @@ function BodyTab({
 
 /* ---------- Tidligere træninger ---------- */
 
-export function HistoryTab({ sessions, onDelete }: { sessions: Session[]; onDelete: (id: string) => void }) {
+export function HistoryTab({ sessions, body = [], onDelete }: { sessions: Session[]; body?: BodyEntry[]; onDelete: (id: string) => void }) {
   if (!sessions.length) return <p className="muted">Ingen træninger endnu. Gå til “Træn”, og gem din første.</p>;
   const sorted = [...sessions].sort((a, b) => b.date.localeCompare(a.date) || (b.savedAt ?? "").localeCompare(a.savedAt ?? ""));
   return (
@@ -1471,6 +1500,7 @@ export function HistoryTab({ sessions, onDelete }: { sessions: Session[]; onDele
       {sorted.map((s) => {
         const day: Day | undefined = dayById(s.dayId);
         const vol = volume(s, (id) => exerciseById(id)?.unit);
+        const kcal = sessionCalories(s, weightOn(body, s.date));
         return (
           <details key={s.id} className="card tr-hist" style={{ "--c": day?.color ?? "var(--accent)" } as CSSProperties}>
             <summary>
@@ -1480,6 +1510,7 @@ export function HistoryTab({ sessions, onDelete }: { sessions: Session[]; onDele
                 <span className="small">
                   {fmtDate(s.date)} · {s.exercises.length} {s.exercises.length === 1 ? "øvelse" : "øvelser"}
                   {vol ? ` · ${vol.toLocaleString("da-DK")} kg løftet i alt` : ""}
+                  {` · 🔥 ${fmtRange(kcal)}`}
                 </span>
               </span>
             </summary>
