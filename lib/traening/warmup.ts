@@ -41,8 +41,8 @@ export const WARMUP_PLANS: WarmupPlan[] = [
   },
   {
     name: "Planke på siden",
-    holds: 6,
-    holdSec: 15,
+    holds: 10,
+    holdSec: 10,
     sides: ["Højre side: løft hoften", "Venstre side: løft hoften"],
     betweenSec: 8,
   },

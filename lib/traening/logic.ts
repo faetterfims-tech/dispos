@@ -246,7 +246,10 @@ export function suggest(ex: Exercise, last: ExerciseLog | null, ctx: LoadContext
     }
     case "sek": {
       const best = Math.max(...prev.map((s) => s.reps));
-      return { sets: fill(0, best).map(() => ({ kg: 0, reps: Math.min(best + 5, 180) })), hint: `Længste hold sidst: ${best} sek. Gå efter ${best + 5}.` };
+      if (best >= hi)
+        return { sets: fill(0, hi).map(() => ({ kg: 0, reps: hi })), hint: `Du holdt ${best} sek. Bliv på ${hi} sek, og gør øvelsen sværere i stedet for at holde længere (se tippet).` };
+      const goal = Math.min(best + 5, hi);
+      return { sets: fill(0, best).map(() => ({ kg: 0, reps: goal })), hint: `Længste hold sidst: ${best} sek. Gå efter ${goal}.` };
     }
     case "runder": {
       const r = prev.reduce((s, x) => s + x.reps, 0);
