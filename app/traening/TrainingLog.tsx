@@ -24,6 +24,7 @@ import {
   withActivity,
 } from "@/lib/traening/program";
 import { TourCard } from "./Cardio";
+import { rampEnabled, rampFor, rampSets, rampWeeks, type Ramp } from "@/lib/traening/ramp";
 import { fmtKm, fmtKmh, isCardio, kmhOf } from "@/lib/traening/cardio";
 import {
   fmtKg,
@@ -207,7 +208,10 @@ function rowsFor(ex: Exercise, sessions: Session[], date: string, ctx: LoadConte
   if (ex.unit === "km") return [{ kg: "", reps: "", done: false }];
   const last = lastLog(sessions, ex.id, date);
   const sug = suggest(ex, last?.log ?? null, ctx);
-  return sug.sets.map((s, i) => ({
+  // Rolig opstart: færre sæt (og færre intervalrunder) de første uger.
+  const ramp = rampFor(ctx.profile, sessions, date);
+  const sets = sug.sets.slice(0, rampSets(ex, ramp)).map((s) => (ramp && ex.unit === "runder" && s.reps > ramp.rounds ? { ...s, reps: ramp.rounds } : s));
+  return sets.map((s, i) => ({
     kg: ex.unit === "kg" && s.kg ? fmtKg(s.kg) : "",
     reps: s.reps ? String(s.reps) : "",
     done: false,
@@ -557,6 +561,7 @@ export default function TrainingLog() {
           loadCtx={ctxOf(data)}
           equipmentChosen={data.equipment != null}
           onEquipment={chooseEquipment}
+          onRamp={(on) => saveProfile({ ...(data.profile ?? { level: "ny" }), ramp: on })}
         />
       )}
       {tab === "fremgang" && (
@@ -676,6 +681,7 @@ export function TrainTab({
   loadCtx,
   equipmentChosen,
   onEquipment,
+  onRamp,
 }: {
   draft: Draft;
   sessions: Session[];
@@ -692,7 +698,11 @@ export function TrainTab({
   loadCtx: LoadContext;
   equipmentChosen: boolean;
   onEquipment: (e: Equip[]) => void;
+  /** Slå rolig opstart til/fra. */
+  onRamp: (on: boolean) => void;
 }) {
+  const ramp = rampFor(loadCtx.profile, sessions, draft.date);
+  const [rampInfo, setRampInfo] = useState(false);
   const day = dayFor(draft.dayId, equipment, draft.activity) ?? resolveDay(DAYS[0], equipment);
   const baseDay = dayById(draft.dayId);
   const canChoose = !!baseDay && isCardioDay(baseDay);
@@ -859,6 +869,11 @@ export function TrainTab({
       <WeekStrip sessions={sessions} selected={draft.date} upNextId={upNextId} order={order} onPick={pickDate} />
 
       <div className="tr-hero" style={{ "--c": day.color } as CSSProperties}>
+        {ramp && (
+          <button className="tr-ramp-badge" onClick={() => setRampInfo((v) => !v)} aria-expanded={rampInfo}>
+            🌱 Opstart · uge {ramp.week}/{ramp.weeks}
+          </button>
+        )}
         <div className="tr-hero-date">{isToday ? (workout ? "I gang" : "Dit næste pas") : `Efterregistrering · ${fmtLong(draft.date)}`}</div>
         <div className="tr-hero-title">{day.name}</div>
         <div className="tr-hero-meta">
@@ -903,6 +918,8 @@ export function TrainTab({
         </select>
       </div>
 
+      {ramp && rampInfo && <RampCard ramp={ramp} onOff={() => { onRamp(false); setRampInfo(false); }} />}
+
       {canChoose && (
         <div className="card">
           <strong>Hvad vil du lave i dag?</strong>
@@ -928,6 +945,11 @@ export function TrainTab({
           tallene, hvis det gik anderledes end foreslået. Hold 1–1½ min pause mellem sættene. Holder du fri en dag, venter det samme pas til
           næste gang.
         </span>
+        {ramp && (
+          <span className="small tr-ramp-line">
+            🌱 <b>Rolig opstart:</b> stop hvert sæt, når du kunne tage {ramp.reserve} gentagelser mere.
+          </span>
+        )}
       </div>
       )}
 
@@ -1052,7 +1074,7 @@ export function TrainTab({
                 <span className="tr-goal-label">Mål</span>
                 {ex.unit === "runder"
                   ? `${ex.target[0]}–${ex.target[1]} runder`
-                  : `${ex.sets} sæt à ${ex.target[0]}–${ex.target[1]} ${ex.unit === "sek" ? "sekunder" : "gange"}`}
+                  : `${rampSets(ex, ramp)} sæt à ${ex.target[0]}–${ex.target[1]} ${ex.unit === "sek" ? "sekunder" : "gange"}${ramp && rampSets(ex, ramp) < ex.sets ? " (opstart)" : ""}`}
               </div>
               {last && (
                 <div>
@@ -1060,7 +1082,7 @@ export function TrainTab({
                   {fmtSets(ex, last.log.sets)} <span className="small">({fmtDate(last.date)})</span>
                 </div>
               )}
-              <div className="tr-goal-hint">👉 {testNote ?? tip.hint}</div>
+              <div className="tr-goal-hint">👉 {testNote ?? (ramp && ex.unit === "runder" ? `Opstart: gå efter ${ramp.rounds} runder i dag.` : tip.hint)}</div>
             </div>
 
             <div className={`tr-sets${locked ? " locked" : ""}`}>
@@ -1469,10 +1491,34 @@ function ProgressTab({
 
 /* ---------- Vægt og mål ---------- */
 
+/** Forklaring af opstarten, med mulighed for at slå den fra. */
+function RampCard({ ramp, onOff }: { ramp: Ramp; onOff: () => void }) {
+  const sets = ramp.sets > 0 ? `højst ${ramp.sets} sæt pr. øvelse` : "ét sæt mindre pr. øvelse end normalt";
+  return (
+    <div className="card tr-ramp-card">
+      <strong>🌱 Rolig opstart · uge {ramp.week} af {ramp.weeks}</strong>
+      <p className="small" style={{ margin: "0.4rem 0" }}>
+        Denne uge: {sets}, højst {ramp.rounds} intervalrunder, og stop hvert sæt, når du kunne tage {ramp.reserve} gentagelser mere. Fra uge {ramp.weeks + 1} får du
+        hele programmet.
+      </p>
+      <p className="small" style={{ margin: "0 0 0.6rem" }}>
+        Få sæt i starten giver næsten samme beskyttelse mod ømhed som et hårdt pas, men du bliver langt mindre øm imens. Du kan ændre det under <b>Vægt → Om dig</b>.
+      </p>
+      <button className="secondary" onClick={onOff}>
+        Slå opstart fra, giv mig hele programmet
+      </button>
+    </div>
+  );
+}
+
 function ProfileCard({ profile, onSave }: { profile: Profile | null; onSave: (p: Profile) => void }) {
   const level = profile?.level;
   const sex = profile?.sex;
-  const save = (nextLevel: Profile["level"], nextSex: Sex | undefined) => onSave(nextSex ? { level: nextLevel, sex: nextSex } : { level: nextLevel });
+  const ramp = profile?.ramp;
+  /** Skift af erfaring nulstiller opstartsvalget, så det følger anbefalingen for det nye niveau. */
+  const save = (nextLevel: Profile["level"], nextSex: Sex | undefined, nextRamp: boolean | undefined = nextLevel === level ? ramp : undefined) =>
+    onSave({ level: nextLevel, ...(nextSex ? { sex: nextSex } : {}), ...(nextRamp === undefined ? {} : { ramp: nextRamp }) });
+  const rampOn = rampEnabled(profile);
   return (
     <div className="card">
       <h2>Om dig</h2>
@@ -1502,6 +1548,22 @@ function ProfileCard({ profile, onSave }: { profile: Profile | null; onSave: (p:
           </button>
         ))}
       </div>
+      {level && (
+        <>
+          <div className="tr-field-label">Vil du starte roligt de første uger?</div>
+          <div className="tr-choice">
+            <button aria-pressed={rampOn} onClick={() => save(level, sex, level === "oevet" ? true : undefined)}>
+              Ja, {rampWeeks(level)} uger{level !== "oevet" ? " (anbefalet)" : ""}
+            </button>
+            <button aria-pressed={!rampOn} onClick={() => save(level, sex, level === "oevet" ? undefined : false)}>
+              Nej, fuldt program{level === "oevet" ? " (anbefalet)" : ""}
+            </button>
+          </div>
+          <p className="small" style={{ margin: "0.4rem 0 0" }}>
+            Rolig opstart giver færre sæt de første uger og stopper sættene i god tid, så du ikke bliver helt smadret øm. Ugerne regnes fra din første træning.
+          </p>
+        </>
+      )}
       {!level && <p className="small" style={{ margin: "0.5rem 0 0" }}>Vælg først, hvor meget du har trænet.</p>}
     </div>
   );

@@ -25,12 +25,12 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** POST /api/traening — { kind: "session", session } · { kind: "body", entry } · { kind: "next", dayId } (spring over) · { kind: "program", program } · { kind: "equipment", equipment } · { kind: "profile", level, sex }. */
+/** POST /api/traening — { kind: "session", session } · { kind: "body", entry } · { kind: "next", dayId } (spring over) · { kind: "program", program } · { kind: "equipment", equipment } · { kind: "profile", level, sex, ramp? }. */
 export async function POST(req: NextRequest) {
   if (!storeConfigured()) return fail("Lageret er ikke koblet på.", 503);
   const user = await currentUser(req);
   if (!user) return noAccess();
-  let body: { kind?: string; session?: unknown; entry?: unknown; dayId?: unknown; program?: unknown; equipment?: unknown; level?: unknown; sex?: unknown };
+  let body: { kind?: string; session?: unknown; entry?: unknown; dayId?: unknown; program?: unknown; equipment?: unknown; level?: unknown; sex?: unknown; ramp?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     }
     if (body.kind === "profile") {
       if (!isLevel(body.level)) return fail("Vælg erfaring.", 422);
-      const profile = { level: body.level, ...(isSex(body.sex) ? { sex: body.sex } : {}) };
+      const profile = { level: body.level, ...(isSex(body.sex) ? { sex: body.sex } : {}), ...(typeof body.ramp === "boolean" ? { ramp: body.ramp } : {}) };
       await saveProfile(user.id, profile);
       return NextResponse.json({ ok: true, profile });
     }
