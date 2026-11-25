@@ -1754,3 +1754,40 @@ button.danger {
 .tr-ramp-card {
   border-left: 4px solid #4c9a2a;
 }
+
+/* ---------- Spring over / hviledag ---------- */
+.tr-skip-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.5rem;
+}
+.tr-skip-menu button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  text-align: left;
+  padding: 0.65rem 0.8rem;
+  border-radius: 12px;
+  border: none;
+  background: rgb(255 255 255 / 0.94);
+  color: var(--text);
+  min-height: 0;
+}
+.tr-skip-menu button span {
+  font-size: 0.85rem;
+  color: var(--text-2);
+  font-weight: 400;
+}
+.tr-rest-day {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+}
+.tr-rest-day-icon {
+  font-size: 2.6rem;
+  line-height: 1;
+}

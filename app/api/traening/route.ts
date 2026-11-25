@@ -25,12 +25,12 @@ export async function GET(req: NextRequest) {
   }
 }
 
-/** POST /api/traening — { kind: "session", session } · { kind: "body", entry } · { kind: "next", dayId } (spring over) · { kind: "program", program } · { kind: "equipment", equipment } · { kind: "profile", level, sex, ramp? }. */
+/** POST /api/traening — { kind: "session", session } · { kind: "body", entry } · { kind: "next", dayId, restDate? } (spring over / hviledag) · { kind: "program", program } · { kind: "equipment", equipment } · { kind: "profile", level, sex, ramp? }. */
 export async function POST(req: NextRequest) {
   if (!storeConfigured()) return fail("Lageret er ikke koblet på.", 503);
   const user = await currentUser(req);
   if (!user) return noAccess();
-  let body: { kind?: string; session?: unknown; entry?: unknown; dayId?: unknown; program?: unknown; equipment?: unknown; level?: unknown; sex?: unknown; ramp?: unknown };
+  let body: { kind?: string; session?: unknown; entry?: unknown; dayId?: unknown; program?: unknown; equipment?: unknown; level?: unknown; sex?: unknown; ramp?: unknown; restDate?: unknown; restFrom?: unknown };
   try {
     body = await req.json();
   } catch {
@@ -52,7 +52,8 @@ export async function POST(req: NextRequest) {
     }
     if (body.kind === "next") {
       if (typeof body.dayId !== "string" || !DAYS.some((d) => d.id === body.dayId)) return fail("Ukendt pas.", 422);
-      const next = { dayId: body.dayId, setAt: new Date().toISOString() };
+      const restDate = typeof body.restDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.restDate) ? body.restDate : undefined;
+      const next = { dayId: body.dayId, setAt: new Date().toISOString(), ...(restDate ? { restDate } : {}), ...(restDate && typeof body.restFrom === "string" && DAYS.some((d) => d.id === body.restFrom) ? { restFrom: body.restFrom } : {}) };
       await saveNext(user.id, next);
       return NextResponse.json({ ok: true, next });
     }
