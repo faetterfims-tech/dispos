@@ -316,6 +316,10 @@ export interface NextPointer {
   dayId: string;
   /** ISO-tidspunkt */
   setAt: string;
+  /** Hviledag: denne dato trænes der ikke (passet venter eller rækken er rykket). */
+  restDate?: string;
+  /** Ved "spring dagen over": det pas, der stod på i dag (bruges, hvis man træner alligevel). */
+  restFrom?: string;
 }
 
 /** Passet efter `dayId` i rækken (starter forfra efter det sidste). */
@@ -341,6 +345,10 @@ export function latestSession(sessions: Session[]): Session | null {
  * Hvilket pas står for tur? Det efter det senest gemte — medmindre man har
  * trykket "spring over" efter det, så gælder det valgte.
  */
+/** Holder man hviledag på datoen (og har ikke trænet alligevel)? */
+export const restingOn = (pointer: NextPointer | null, sessions: Session[], date: string) =>
+  !!pointer?.restDate && pointer.restDate === date && !sessions.some((s) => s.date === date);
+
 export function upNext(sessions: Session[], pointer: NextPointer | null, order: string[]): string {
   const last = latestSession(sessions);
   const lastKey = last ? (last.savedAt ?? `${last.date}T00:00:00.000Z`) : "";

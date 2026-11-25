@@ -128,3 +128,13 @@ test("sanitizeSession beholder tid og sætvarighed", () => {
   assert.equal(s?.time?.activeSec, 900);
   assert.equal(sanitizeSession({ id: "t2", date: "2026-11-21", dayId: "a", exercises: [{ id: "roning", sets: [{ kg: 1, reps: 1 }] }], time: { startedAt: "nej" } })?.time, undefined);
 });
+
+test("hviledag gælder kun datoen og kun hvis man ikke har trænet", async () => {
+  const { restingOn } = await import("./logic");
+  const p = { dayId: "underkrop", setAt: "2026-11-25T10:00:00Z", restDate: "2026-11-25" };
+  assert.equal(restingOn(p, [], "2026-11-25"), true);
+  assert.equal(restingOn(p, [], "2026-11-26"), false);
+  assert.equal(restingOn(p, [{ id: "x", date: "2026-11-25", dayId: "underkrop", exercises: [] }], "2026-11-25"), false);
+  assert.equal(restingOn({ dayId: "underkrop", setAt: "x" }, [], "2026-11-25"), false);
+  assert.equal(restingOn(null, [], "2026-11-25"), false);
+});

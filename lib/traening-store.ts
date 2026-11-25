@@ -49,7 +49,7 @@ export async function loadAll(userId: string): Promise<{ sessions: Session[]; bo
   let profile: Profile | null = null;
   try {
     const p = m.profile ? (JSON.parse(m.profile) as Record<string, unknown>) : null;
-    profile = p && isLevel(p.level) ? { level: p.level, ...(isSex(p.sex) ? { sex: p.sex } : {}) } : null;
+    profile = p && isLevel(p.level) ? { level: p.level, ...(isSex(p.sex) ? { sex: p.sex } : {}), ...(typeof p.ramp === "boolean" ? { ramp: p.ramp } : {}) } : null;
   } catch {
     profile = null;
   }

@@ -13,6 +13,8 @@ export type Sex = "mand" | "kvinde";
 export interface Profile {
   level: Level;
   sex?: Sex;
+  /** Rolig opstart: true/false = valgt selv; mangler = ud fra erfaring (til for ny og lidt erfaren). */
+  ramp?: boolean;
 }
 
 export interface LoadContext {

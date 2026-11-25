@@ -24,12 +24,14 @@ import {
   withActivity,
 } from "@/lib/traening/program";
 import { TourCard } from "./Cardio";
+import { rampEnabled, rampFor, rampSets, rampWeeks, type Ramp } from "@/lib/traening/ramp";
 import { fmtKm, fmtKmh, isCardio, kmhOf } from "@/lib/traening/cardio";
 import {
   fmtKg,
   lastLog,
   nextInOrder,
   upNext,
+  restingOn,
   progressSeries,
   scoreLabel,
   sessionsPerWeek,
@@ -207,7 +209,10 @@ function rowsFor(ex: Exercise, sessions: Session[], date: string, ctx: LoadConte
   if (ex.unit === "km") return [{ kg: "", reps: "", done: false }];
   const last = lastLog(sessions, ex.id, date);
   const sug = suggest(ex, last?.log ?? null, ctx);
-  return sug.sets.map((s, i) => ({
+  // Rolig opstart: færre sæt (og færre intervalrunder) de første uger.
+  const ramp = rampFor(ctx.profile, sessions, date);
+  const sets = sug.sets.slice(0, rampSets(ex, ramp)).map((s) => (ramp && ex.unit === "runder" && s.reps > ramp.rounds ? { ...s, reps: ramp.rounds } : s));
+  return sets.map((s, i) => ({
     kg: ex.unit === "kg" && s.kg ? fmtKg(s.kg) : "",
     reps: s.reps ? String(s.reps) : "",
     done: false,
@@ -401,6 +406,28 @@ export default function TrainingLog() {
     }
   }
 
+  /** Hviledag i dag. "advance": rækken rykker et pas, så i morgen er som planlagt. "wait": passet venter. "cancel": træn alligevel. */
+  async function restDay(mode: "wait" | "advance" | "cancel") {
+    if (!draft || !data) return;
+    const dayId = mode === "advance" ? nextInOrder(draft.dayId, orderOf(data)) : mode === "cancel" ? (data.next?.restFrom ?? draft.dayId) : draft.dayId;
+    const restDate = mode === "cancel" ? undefined : today();
+    const extra = restDate ? { restDate, ...(mode === "advance" ? { restFrom: draft.dayId } : {}) } : {};
+    setError(null);
+    try {
+      const pointer: NextPointer = data.configured
+        ? (await api("POST", { kind: "next", dayId, ...extra })).next
+        : { dayId, setAt: new Date().toISOString(), ...extra };
+      const next = { ...data, next: pointer };
+      setData(next);
+      persistLocal(next);
+      setDraft(buildDraft(today(), dayId, data.sessions, equipOf(data), ctxOf(data)));
+      showFlash(mode === "cancel" ? "Hviledagen er fjernet. God træning!" : "Hviledag i dag. Programmet fortsætter i morgen.");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Kunne ikke gemme hviledagen.");
+    }
+  }
+
   /** Spring det nuværende pas over: næste i rækken står så for tur. */
   async function skipPass() {
     if (!draft || !data) return;
@@ -557,6 +584,10 @@ export default function TrainingLog() {
           loadCtx={ctxOf(data)}
           equipmentChosen={data.equipment != null}
           onEquipment={chooseEquipment}
+          onRamp={(on) => saveProfile({ ...(data.profile ?? { level: "ny" }), ramp: on })}
+          restToday={restingOn(data.next, data.sessions, today())}
+          restFrom={data.next?.restFrom}
+          onRest={restDay}
         />
       )}
       {tab === "fremgang" && (
@@ -612,14 +643,15 @@ export default function TrainingLog() {
  * Hvilket pas en dag har: det trænede, hvis man har trænet, ellers det, der
  * står for tur (i dag) og dem derefter (kommende dage). Tidligere dage uden træning: ingen.
  */
-function passForDate(date: string, sessions: Session[], upNextId: string, order: string[]): { day: Day | undefined; trained: boolean } {
+function passForDate(date: string, sessions: Session[], upNextId: string, order: string[], restToday = false): { day: Day | undefined; trained: boolean; rest?: boolean } {
   const trainedDay = sessions.find((s) => s.date === date);
   if (trainedDay) return { day: dayById(trainedDay.dayId), trained: true };
   const t = today();
   if (date < t) return { day: undefined, trained: false };
+  if (date === t && restToday) return { day: undefined, trained: false, rest: true };
   const todayTrained = sessions.some((s) => s.date === t);
   const ahead = Math.round((new Date(`${date}T12:00:00Z`).getTime() - new Date(`${t}T12:00:00Z`).getTime()) / 86_400_000);
-  return { day: dayById(nextInOrder(upNextId, order, todayTrained ? ahead - 1 : ahead)), trained: false };
+  return { day: dayById(nextInOrder(upNextId, order, todayTrained || restToday ? ahead - 1 : ahead)), trained: false };
 }
 
 function WeekStrip({
@@ -628,19 +660,21 @@ function WeekStrip({
   upNextId,
   order,
   onPick,
+  restToday = false,
 }: {
   sessions: Session[];
   selected: string;
   upNextId: string;
   order: string[];
   onPick: (date: string) => void;
+  restToday?: boolean;
 }) {
   const monday = weekStart(today());
   return (
     <div className="tr-week">
       {WEEKDAYS.map((label, i) => {
         const date = addDays(monday, i);
-        const { day, trained } = passForDate(date, sessions, upNextId, order);
+        const { day, trained, rest } = passForDate(date, sessions, upNextId, order, restToday);
         const isToday = date === today();
         const future = date > today();
         return (
@@ -649,11 +683,11 @@ function WeekStrip({
             className={`tr-weekday${date === selected ? " selected" : ""}${isToday ? " today" : ""}${future ? " future" : ""}`}
             onClick={() => onPick(date)}
             style={{ "--c": day?.color ?? "#9b988f" } as CSSProperties}
-            aria-label={`${label}: ${day?.name ?? "fri"}${trained ? ", trænet" : ""}`}
+            aria-label={`${label}: ${rest ? "hviledag" : (day?.name ?? "fri")}${trained ? ", trænet" : ""}`}
           >
             <span className="tr-weekday-label">{label}</span>
             <span className={`tr-dot${trained ? " done" : ""}${day ? " has-pass" : ""}`}>{trained ? "✓" : new Date(`${date}T12:00:00`).getDate()}</span>
-            <span className="tr-weekday-pass">{day?.short ?? "fri"}</span>
+            <span className="tr-weekday-pass">{rest ? "hvil" : (day?.short ?? "fri")}</span>
           </button>
         );
       })}
@@ -676,6 +710,10 @@ export function TrainTab({
   loadCtx,
   equipmentChosen,
   onEquipment,
+  onRamp,
+  restToday,
+  restFrom,
+  onRest,
 }: {
   draft: Draft;
   sessions: Session[];
@@ -692,7 +730,18 @@ export function TrainTab({
   loadCtx: LoadContext;
   equipmentChosen: boolean;
   onEquipment: (e: Equip[]) => void;
+  /** Slå rolig opstart til/fra. */
+  onRamp: (on: boolean) => void;
+  /** Hviledag i dag. */
+  restToday: boolean;
+  /** Det pas, der oprindeligt stod på i dag (ved "spring dagen over"). */
+  restFrom?: string;
+  /** "wait" = passet venter til i morgen, "advance" = i morgen tages det, der stod på i morgen, "cancel" = træn alligevel. */
+  onRest: (mode: "wait" | "advance" | "cancel") => void;
 }) {
+  const [skipMenu, setSkipMenu] = useState(false);
+  const ramp = rampFor(loadCtx.profile, sessions, draft.date);
+  const [rampInfo, setRampInfo] = useState(false);
   const day = dayFor(draft.dayId, equipment, draft.activity) ?? resolveDay(DAYS[0], equipment);
   const baseDay = dayById(draft.dayId);
   const canChoose = !!baseDay && isCardioDay(baseDay);
@@ -831,8 +880,29 @@ export function TrainTab({
   if (preview) {
     return (
       <>
-        <WeekStrip sessions={sessions} selected={preview} upNextId={upNextId} order={order} onPick={pickDate} />
-        <PreviewDay date={preview} day={resolveDay(passForDate(preview, sessions, upNextId, order).day ?? DAYS[0], equipment)} sessions={sessions} onBack={() => setPreview(null)} />
+        <WeekStrip sessions={sessions} selected={preview} upNextId={upNextId} order={order} onPick={pickDate} restToday={restToday} />
+        <PreviewDay date={preview} day={resolveDay(passForDate(preview, sessions, upNextId, order, restToday).day ?? DAYS[0], equipment)} sessions={sessions} onBack={() => setPreview(null)} />
+      </>
+    );
+  }
+
+  if (restToday && isToday && !workout && doneSets === 0) {
+    const tomorrow = passForDate(addDays(today(), 1), sessions, upNextId, order, true).day;
+    return (
+      <>
+        <WeekStrip sessions={sessions} selected={draft.date} upNextId={upNextId} order={order} onPick={pickDate} restToday />
+        <div className="card tr-rest-day">
+          <div className="tr-rest-day-icon" aria-hidden>
+            😴
+          </div>
+          <strong>Hviledag i dag</strong>
+          <p className="small">
+            Ingen træning i dag. I morgen står der <b>{tomorrow?.name ?? "et nyt pas"}</b> på programmet. Lidt gang eller udstrækning er fint, hvis du er øm.
+          </p>
+          <button className="secondary" onClick={() => onRest("cancel")}>
+            Træn alligevel ({dayById(restFrom ?? day.id)?.name ?? day.name})
+          </button>
+        </div>
       </>
     );
   }
@@ -856,9 +926,14 @@ export function TrainTab({
     <>
       <EquipmentCard equipment={equipment} chosen={equipmentChosen} locked={!!workout} onChange={onEquipment} />
 
-      <WeekStrip sessions={sessions} selected={draft.date} upNextId={upNextId} order={order} onPick={pickDate} />
+      <WeekStrip sessions={sessions} selected={draft.date} upNextId={upNextId} order={order} onPick={pickDate} restToday={restToday} />
 
       <div className="tr-hero" style={{ "--c": day.color } as CSSProperties}>
+        {ramp && (
+          <button className="tr-ramp-badge" onClick={() => setRampInfo((v) => !v)} aria-expanded={rampInfo}>
+            🌱 Opstart · uge {ramp.week}/{ramp.weeks}
+          </button>
+        )}
         <div className="tr-hero-date">{isToday ? (workout ? "I gang" : "Dit næste pas") : `Efterregistrering · ${fmtLong(draft.date)}`}</div>
         <div className="tr-hero-title">{day.name}</div>
         <div className="tr-hero-meta">
@@ -886,9 +961,42 @@ export function TrainTab({
           </div>
         )}
         {doneSets === 0 && !workout && isToday && nextDay && (
-          <button className="tr-skip" onClick={onSkip}>
-            Spring over → {nextDay.name}
+          <button className="tr-skip" onClick={() => setSkipMenu((v) => !v)} aria-expanded={skipMenu}>
+            Spring over {skipMenu ? "▴" : "▾"}
           </button>
+        )}
+        {skipMenu && doneSets === 0 && !workout && isToday && nextDay && (
+          <div className="tr-skip-menu">
+            <button
+              onClick={() => {
+                setSkipMenu(false);
+                onRest("advance");
+              }}
+            >
+              <b>⏭ Spring dagen over</b>
+              <span>Ingen træning i dag. I morgen tager du det pas, der ellers stod på i morgen.</span>
+            </button>
+            <button
+              onClick={() => {
+                setSkipMenu(false);
+                onRest("wait");
+              }}
+            >
+              <b>😴 Hviledag – passet venter</b>
+              <span>Ingen træning i dag. {day.name} rykker til i morgen.</span>
+            </button>
+            <button
+              onClick={() => {
+                setSkipMenu(false);
+                onSkip();
+              }}
+            >
+              <b>↪ Tag næste pas i dag</b>
+              <span>
+                Spring {day.name} over og træn {nextDay.name} i dag i stedet.
+              </span>
+            </button>
+          </div>
         )}
         <select className="tr-hero-select" value={draft.dayId} onChange={(e) => onPick(draft.date, e.target.value)} aria-label="Skift pas">
           {PROGRAMS.map((p) => (
@@ -902,6 +1010,8 @@ export function TrainTab({
           ))}
         </select>
       </div>
+
+      {ramp && rampInfo && <RampCard ramp={ramp} onOff={() => { onRamp(false); setRampInfo(false); }} />}
 
       {canChoose && (
         <div className="card">
@@ -928,6 +1038,11 @@ export function TrainTab({
           tallene, hvis det gik anderledes end foreslået. Hold 1–1½ min pause mellem sættene. Holder du fri en dag, venter det samme pas til
           næste gang.
         </span>
+        {ramp && (
+          <span className="small tr-ramp-line">
+            🌱 <b>Rolig opstart:</b> stop hvert sæt, når du kunne tage {ramp.reserve} gentagelser mere.
+          </span>
+        )}
       </div>
       )}
 
@@ -1052,7 +1167,7 @@ export function TrainTab({
                 <span className="tr-goal-label">Mål</span>
                 {ex.unit === "runder"
                   ? `${ex.target[0]}–${ex.target[1]} runder`
-                  : `${ex.sets} sæt à ${ex.target[0]}–${ex.target[1]} ${ex.unit === "sek" ? "sekunder" : "gange"}`}
+                  : `${rampSets(ex, ramp)} sæt à ${ex.target[0]}–${ex.target[1]} ${ex.unit === "sek" ? "sekunder" : "gange"}${ramp && rampSets(ex, ramp) < ex.sets ? " (opstart)" : ""}`}
               </div>
               {last && (
                 <div>
@@ -1060,7 +1175,7 @@ export function TrainTab({
                   {fmtSets(ex, last.log.sets)} <span className="small">({fmtDate(last.date)})</span>
                 </div>
               )}
-              <div className="tr-goal-hint">👉 {testNote ?? tip.hint}</div>
+              <div className="tr-goal-hint">👉 {testNote ?? (ramp && ex.unit === "runder" ? `Opstart: gå efter ${ramp.rounds} runder i dag.` : tip.hint)}</div>
             </div>
 
             <div className={`tr-sets${locked ? " locked" : ""}`}>
@@ -1469,10 +1584,34 @@ function ProgressTab({
 
 /* ---------- Vægt og mål ---------- */
 
+/** Forklaring af opstarten, med mulighed for at slå den fra. */
+function RampCard({ ramp, onOff }: { ramp: Ramp; onOff: () => void }) {
+  const sets = ramp.sets > 0 ? `højst ${ramp.sets} sæt pr. øvelse` : "ét sæt mindre pr. øvelse end normalt";
+  return (
+    <div className="card tr-ramp-card">
+      <strong>🌱 Rolig opstart · uge {ramp.week} af {ramp.weeks}</strong>
+      <p className="small" style={{ margin: "0.4rem 0" }}>
+        Denne uge: {sets}, højst {ramp.rounds} intervalrunder, og stop hvert sæt, når du kunne tage {ramp.reserve} gentagelser mere. Fra uge {ramp.weeks + 1} får du
+        hele programmet.
+      </p>
+      <p className="small" style={{ margin: "0 0 0.6rem" }}>
+        Få sæt i starten giver næsten samme beskyttelse mod ømhed som et hårdt pas, men du bliver langt mindre øm imens. Du kan ændre det under <b>Vægt → Om dig</b>.
+      </p>
+      <button className="secondary" onClick={onOff}>
+        Slå opstart fra, giv mig hele programmet
+      </button>
+    </div>
+  );
+}
+
 function ProfileCard({ profile, onSave }: { profile: Profile | null; onSave: (p: Profile) => void }) {
   const level = profile?.level;
   const sex = profile?.sex;
-  const save = (nextLevel: Profile["level"], nextSex: Sex | undefined) => onSave(nextSex ? { level: nextLevel, sex: nextSex } : { level: nextLevel });
+  const ramp = profile?.ramp;
+  /** Skift af erfaring nulstiller opstartsvalget, så det følger anbefalingen for det nye niveau. */
+  const save = (nextLevel: Profile["level"], nextSex: Sex | undefined, nextRamp: boolean | undefined = nextLevel === level ? ramp : undefined) =>
+    onSave({ level: nextLevel, ...(nextSex ? { sex: nextSex } : {}), ...(nextRamp === undefined ? {} : { ramp: nextRamp }) });
+  const rampOn = rampEnabled(profile);
   return (
     <div className="card">
       <h2>Om dig</h2>
@@ -1502,6 +1641,22 @@ function ProfileCard({ profile, onSave }: { profile: Profile | null; onSave: (p:
           </button>
         ))}
       </div>
+      {level && (
+        <>
+          <div className="tr-field-label">Vil du starte roligt de første uger?</div>
+          <div className="tr-choice">
+            <button aria-pressed={rampOn} onClick={() => save(level, sex, level === "oevet" ? true : undefined)}>
+              Ja, {rampWeeks(level)} uger{level !== "oevet" ? " (anbefalet)" : ""}
+            </button>
+            <button aria-pressed={!rampOn} onClick={() => save(level, sex, level === "oevet" ? undefined : false)}>
+              Nej, fuldt program{level === "oevet" ? " (anbefalet)" : ""}
+            </button>
+          </div>
+          <p className="small" style={{ margin: "0.4rem 0 0" }}>
+            Rolig opstart giver færre sæt de første uger og stopper sættene i god tid, så du ikke bliver helt smadret øm. Ugerne regnes fra din første træning.
+          </p>
+        </>
+      )}
       {!level && <p className="small" style={{ margin: "0.5rem 0 0" }}>Vælg først, hvor meget du har trænet.</p>}
     </div>
   );
