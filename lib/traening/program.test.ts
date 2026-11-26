@@ -57,7 +57,7 @@ test("udstyr: uden stang bliver pull-ups byttet ud", async () => {
 test("med håndvægte bruger vægtprogrammet vægte frem for kropsvægt og stol", () => {
   const owned = ["haandvaegte", "stang", "stol"] as const;
   const ids = DAYS.filter((d) => d.program === "udstyr").flatMap((d) => resolveDay(d, [...owned]).exercises.map((e) => e.id));
-  for (const bad of ["dips", "armstraek", "hoftehaev", "splitstol"]) assert.ok(!ids.includes(bad), bad);
+  for (const bad of ["dips", "armstraek", "hoftehaev", "splitstol", "planke", "deadbug"]) assert.ok(!ids.includes(bad), bad);
   assert.ok(ids.includes("flyes") && ids.includes("vaegthofte"));
   assert.ok(DAYS.filter((d) => d.program === "udstyr").flatMap((d) => resolveDay(d, ["stol"]).exercises).some((e) => e.id === "dips"));
 });

@@ -25,7 +25,7 @@ export type WorkoutKind = "vaegte" | "kropsvaegt" | "kondition";
 /** Antaget kropsvægt, hvis den ikke er skrevet ind. */
 export const DEFAULT_BODY_KG = 75;
 
-const CORE = new Set(["planke", "sideplanke", "deadbug"]);
+const CORE = new Set(["planke", "sideplanke", "deadbug", "vaegtdeadbug"]);
 const VIGOROUS = new Set(["bjergbestiger", "intervaller"]);
 
 /** MET i selve arbejdet for en øvelse. */
