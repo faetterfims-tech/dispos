@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DAYS, EXERCISES, orderFor } from "./program";
+import { DAYS, EXERCISES, orderFor, resolveDay } from "./program";
 
 test("hvert pas hører til ét program, og id'er er unikke", () => {
   assert.equal(new Set(DAYS.map((d) => d.id)).size, DAYS.length);
@@ -52,4 +52,12 @@ test("udstyr: uden stang bliver pull-ups byttet ud", async () => {
   assert.ok(ids(["haandvaegte", "stol", "baand"]).includes("baandtraek"));
   assert.ok(ids(["haandvaegte", "stol"]).includes("ttraek"));
   assert.ok(!ids(["haandvaegte"]).includes("pullups"));
+});
+
+test("med håndvægte bruger vægtprogrammet vægte frem for kropsvægt og stol", () => {
+  const owned = ["haandvaegte", "stang", "stol"] as const;
+  const ids = DAYS.filter((d) => d.program === "udstyr").flatMap((d) => resolveDay(d, [...owned]).exercises.map((e) => e.id));
+  for (const bad of ["dips", "armstraek", "hoftehaev", "splitstol"]) assert.ok(!ids.includes(bad), bad);
+  assert.ok(ids.includes("flyes") && ids.includes("vaegthofte"));
+  assert.ok(DAYS.filter((d) => d.program === "udstyr").flatMap((d) => resolveDay(d, ["stol"]).exercises).some((e) => e.id === "dips"));
 });

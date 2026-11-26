@@ -112,10 +112,10 @@ const UD_IND: Phase[] = [
  */
 const TEMPO: Record<string, Phase[]> = {
   goblet: NED_FOERST, squat: NED_FOERST, armstraek: NED_FOERST, udfald: NED_FOERST, splitstol: NED_FOERST, bulgarsk: NED_FOERST,
-  rdl: NED_FOERST, dips: NED_FOERST, skraapres: NED_FOERST, baenkpres: NED_FOERST, triceps: NED_FOERST, skulderarm: NED_FOERST,
+  rdl: NED_FOERST, dips: NED_FOERST, skraapres: NED_FOERST, baenkpres: NED_FOERST, triceps: NED_FOERST, skulderarm: NED_FOERST, skraabaenk: NED_FOERST, flyes: NED_FOERST,
   roning: OP_FOERST, baandroning: OP_FOERST, skulderpres: OP_FOERST, pullups: OP_FOERST, chinups: OP_FOERST, curl: OP_FOERST,
   sideloeft: OP_FOERST, baandtraek: OP_FOERST, knaeloeft: OP_FOERST,
-  hoftehaev: OP_HOLD, hoftebenet: OP_HOLD, ytraek: OP_HOLD, ttraek: OP_HOLD,
+  hoftehaev: OP_HOLD, vaegthofte: OP_HOLD, hoftebenet: OP_HOLD, ytraek: OP_HOLD, ttraek: OP_HOLD,
   deadbug: UD_IND,
 };
 

@@ -47,6 +47,9 @@ const RATIOS: Record<string, { ratio: number; upper: boolean }> = {
   baenkpres: { ratio: 0.1, upper: true },
   sideloeft: { ratio: 0.025, upper: true },
   triceps: { ratio: 0.07, upper: true },
+  skraabaenk: { ratio: 0.09, upper: true },
+  flyes: { ratio: 0.04, upper: true },
+  vaegthofte: { ratio: 0.2, upper: false },
 };
 
 const LEVEL_FACTOR: Record<Level, number> = { ny: 1, lidt: 1.3, oevet: 1.7 };
