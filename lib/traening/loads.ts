@@ -50,6 +50,8 @@ const RATIOS: Record<string, { ratio: number; upper: boolean }> = {
   skraabaenk: { ratio: 0.09, upper: true },
   flyes: { ratio: 0.04, upper: true },
   vaegthofte: { ratio: 0.2, upper: false },
+  plankeroning: { ratio: 0.08, upper: true },
+  vaegtdeadbug: { ratio: 0.06, upper: true },
 };
 
 const LEVEL_FACTOR: Record<Level, number> = { ny: 1, lidt: 1.3, oevet: 1.7 };

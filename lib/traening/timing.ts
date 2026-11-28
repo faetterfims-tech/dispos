@@ -114,9 +114,9 @@ const TEMPO: Record<string, Phase[]> = {
   goblet: NED_FOERST, squat: NED_FOERST, armstraek: NED_FOERST, udfald: NED_FOERST, splitstol: NED_FOERST, bulgarsk: NED_FOERST,
   rdl: NED_FOERST, dips: NED_FOERST, skraapres: NED_FOERST, baenkpres: NED_FOERST, triceps: NED_FOERST, skulderarm: NED_FOERST, skraabaenk: NED_FOERST, flyes: NED_FOERST,
   roning: OP_FOERST, baandroning: OP_FOERST, skulderpres: OP_FOERST, pullups: OP_FOERST, chinups: OP_FOERST, curl: OP_FOERST,
-  sideloeft: OP_FOERST, baandtraek: OP_FOERST, knaeloeft: OP_FOERST,
+  sideloeft: OP_FOERST, plankeroning: OP_FOERST, baandtraek: OP_FOERST, knaeloeft: OP_FOERST,
   hoftehaev: OP_HOLD, vaegthofte: OP_HOLD, hoftebenet: OP_HOLD, ytraek: OP_HOLD, ttraek: OP_HOLD,
-  deadbug: UD_IND,
+  deadbug: UD_IND, vaegtdeadbug: UD_IND,
 };
 
 /** Rytmen for en øvelse. Null = ingen rytme (hold eller intervaller). */
@@ -127,7 +127,7 @@ export function tempoFor(ex: Exercise): Phase[] | null {
 
 /** Ben: længere pause. Mave og kropsstabilitet: kortere. */
 const LEG_REST = new Set(["goblet", "squat", "rdl", "bulgarsk", "splitstol", "udfald"]);
-const CORE_REST = new Set(["planke", "sideplanke", "deadbug", "bjergbestiger", "knaeloeft"]);
+const CORE_REST = new Set(["plankeroning", "vaegtdeadbug", "planke", "sideplanke", "deadbug", "bjergbestiger", "knaeloeft"]);
 
 /**
  * Pause efter et sæt, i sekunder. Forskning peger på 1–2 min som bedst for muskelvækst,
