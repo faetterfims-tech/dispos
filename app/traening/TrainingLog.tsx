@@ -25,6 +25,11 @@ import {
 } from "@/lib/traening/program";
 import { TourCard } from "./Cardio";
 import { rampEnabled, rampFor, rampSets, rampWeeks, type Ramp } from "@/lib/traening/ramp";
+import { estimateSec, fmtEstimate } from "@/lib/traening/duration";
+import { buildSteps, totalSeconds } from "@/lib/traening/warmup";
+
+/** Opvarmningens længde (sek). */
+const WARMUP_SEC = totalSeconds(buildSteps());
 import { fmtKm, fmtKmh, isCardio, kmhOf } from "@/lib/traening/cardio";
 import {
   fmtKg,
@@ -881,7 +886,7 @@ export function TrainTab({
     return (
       <>
         <WeekStrip sessions={sessions} selected={preview} upNextId={upNextId} order={order} onPick={pickDate} restToday={restToday} />
-        <PreviewDay date={preview} day={resolveDay(passForDate(preview, sessions, upNextId, order, restToday).day ?? DAYS[0], equipment)} sessions={sessions} onBack={() => setPreview(null)} />
+        <PreviewDay date={preview} day={resolveDay(passForDate(preview, sessions, upNextId, order, restToday).day ?? DAYS[0], equipment)} sessions={sessions} profile={loadCtx.profile} onBack={() => setPreview(null)} />
       </>
     );
   }
@@ -937,7 +942,17 @@ export function TrainTab({
         <div className="tr-hero-date">{isToday ? (workout ? "I gang" : "Dit næste pas") : `Efterregistrering · ${fmtLong(draft.date)}`}</div>
         <div className="tr-hero-title">{day.name}</div>
         <div className="tr-hero-meta">
-          {isTour ? "30–60 min" : `${day.exercises.length === 1 ? "1 øvelse" : `${day.exercises.length} øvelser`} · ${day.minutes}`}
+          {isTour
+            ? "30–60 min"
+            : `${day.exercises.length === 1 ? "1 øvelse" : `${day.exercises.length} øvelser`} · ${fmtEstimate(
+                estimateSec(
+                  day.exercises.map((ex) => {
+                    const rows = draft.sets[ex.id] ?? [];
+                    return { ex, sets: rows.length || ex.sets, reps: ex.unit === "runder" ? toNum(rows[0]?.reps ?? "") || undefined : undefined };
+                  }),
+                  day.warmup ? WARMUP_SEC : 0,
+                ),
+              )}`}
         </div>
         <div className="tr-progress" aria-label={`${doneSets} af ${total} sæt lavet`}>
           <div style={{ width: `${total ? (doneSets / total) * 100 : 0}%` }} />
@@ -1387,7 +1402,14 @@ function relDay(date: string) {
   return fmtLong(date);
 }
 
-export function PreviewDay({ date, day, sessions, onBack }: { date: string; day: Day; sessions: Session[]; onBack: () => void }) {
+export function PreviewDay({ date, day, sessions, profile, onBack }: { date: string; day: Day; sessions: Session[]; profile?: Profile | null; onBack: () => void }) {
+  const ramp = rampFor(profile, sessions, date);
+  const estimate = fmtEstimate(
+    estimateSec(
+      day.exercises.map((ex) => ({ ex, sets: rampSets(ex, ramp), reps: ramp && ex.unit === "runder" ? Math.min(ramp.rounds, ex.target[0]) : undefined })),
+      day.warmup ? WARMUP_SEC : 0,
+    ),
+  );
   const back = (
     <button className="secondary" style={{ width: "100%" }} onClick={onBack}>
       ← Tilbage til dit næste pas
@@ -1400,7 +1422,8 @@ export function PreviewDay({ date, day, sessions, onBack }: { date: string; day:
         <div className="tr-hero-date">{relDay(date)}</div>
         <div className="tr-hero-title">{day.name}</div>
         <div className="tr-hero-meta">
-          {day.exercises.length === 1 ? "1 øvelse" : `${day.exercises.length} øvelser`} · {day.minutes}
+          {day.exercises.length === 1 ? "1 øvelse" : `${day.exercises.length} øvelser`} · {estimate}
+          {ramp ? " · 🌱 opstart" : ""}
         </div>
         <div className="tr-hero-note">Hvis du træner hver dag frem til da. Holder du fri en dag, rykker passene bare en dag.</div>
       </div>
